@@ -1,0 +1,23 @@
+{
+  "name": "otp-system",
+  "version": "1.0.0",
+  "description": "this is the backend handling otp system",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "otp",
+    "blockchain",
+    "eip-712",
+    "signature"
+  ],
+  "author": "kairoo",
+  "license": "ISC",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@openzeppelin/contracts": "^5.1.0",
+    "ethers": "^6.13.4",
+    "hardhat": "^2.22.17"
+  }
+}
