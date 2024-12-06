@@ -7,7 +7,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "compile": "npx hardhat compile",
     "start-node-local": "npx hardhat node",
-    "deploy-local": "npx hardhat ignition deploy ./ignition/modules/OTPSystem.ts --network localhost"
+    "deploy-local": "npx hardhat ignition deploy ./ignition/modules/OTPSystem.ts --network localhost",
+    "deploy-sepolia": "npx hardhat ignition deploy ./ignition/modules/OTPSystem.ts --network sepolia"
   },
   "keywords": [
     "otp",

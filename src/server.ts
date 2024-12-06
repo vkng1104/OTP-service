@@ -1,7 +1,7 @@
 import express from "express";
 import { ethers } from "ethers";
 import dotenv from "dotenv";
-import * as OTPSystemABI from "../artifacts/contracts/OTPSystem.sol/OTPSystem.json"; // Import the ABI from the JSON file
+import OTPSystemJSON from "./artifacts/src/contracts/OTPSystem.sol/OTPSystem.json"; // Import the ABI from the JSON file
 import cors from "cors";
 dotenv.config();
 
@@ -21,7 +21,7 @@ const signer = new ethers.Wallet(PRIVATE_KEY as string, provider);
 // Connect to the deployed contract
 const contract = new ethers.Contract(
   CONTRACT_ADDRESS as string,
-  OTPSystemABI.abi,
+  OTPSystemJSON.abi,
   signer
 );
 
@@ -97,6 +97,8 @@ app.post("/verify-otp", async (req, res) => {
     // Verify the OTP on-chain
     const tx = await contract.verifyOtp(ethers.id(transactionId), hashedOtp);
     const receipt = await tx.wait();
+
+    console.log(receipt.events);
 
     res.status(200).json({
       message: "OTP verified successfully",
