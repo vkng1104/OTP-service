@@ -1,5 +1,7 @@
 {
   "compilerOptions": {
+    "outDir": "./dist", // Output directory for compiled files
+    "rootDir": "./src", // Specify where your source files are located
     "target": "es2020",
     "module": "commonjs",
     "esModuleInterop": true,
@@ -7,5 +9,7 @@
     "strict": true,
     "skipLibCheck": true,
     "resolveJsonModule": true
-  }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
 }
