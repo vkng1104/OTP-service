@@ -15,7 +15,15 @@ This project implements an **OTP (One-Time Password) System** as a smart contrac
 
 ## Local Setup Guide
 
-### Step 1: Start the Local Blockchain
+### Step 1: Compile Smart Contract
+
+Run the following command to compile the smart contract in artifacts folder:
+
+```bash
+npx hardhat compile
+```
+
+### Step 2: Start the Local Blockchain
 
 Run the following command to start a local blockchain using Hardhat:
 
@@ -23,7 +31,7 @@ Run the following command to start a local blockchain using Hardhat:
 npx hardhat node
 ```
 
-### Step 2: Deploy the OTP Smart Contract
+### Step 3: Deploy the OTP Smart Contract
 
 Use the **Hardhat Ignition** module to deploy the contract locally:
 
