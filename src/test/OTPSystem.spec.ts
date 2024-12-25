@@ -1,7 +1,7 @@
 import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { expect } from "chai";
-import hre from "hardhat";
 import { ethers } from "ethers";
+import hre from "hardhat";
 
 describe("OTPSystem", function () {
   async function deployOtpSystemFixture() {
@@ -27,7 +27,7 @@ describe("OTPSystem", function () {
 
     it("Should assign address as an admin", async function () {
       const { otpSystem, admin, ADMIN_ROLE } = await loadFixture(
-        deployOtpSystemFixture
+        deployOtpSystemFixture,
       );
       expect(await otpSystem.hasRole(ADMIN_ROLE, admin.address)).to.be.true;
     });
@@ -165,7 +165,7 @@ describe("OTPSystem", function () {
 
       // Attempt to request OTP with expired time
       await expect(
-        otpSystem.connect(user).requestOtp(request, signature)
+        otpSystem.connect(user).requestOtp(request, signature),
       ).to.be.revertedWith("OTP has expired");
     });
 
@@ -210,7 +210,7 @@ describe("OTPSystem", function () {
           userAddress: user.address,
           expirationTime,
         },
-        signature
+        signature,
       );
 
       // Try requesting OTP for the same transactionId again
@@ -222,13 +222,13 @@ describe("OTPSystem", function () {
             userAddress: user.address,
             expirationTime,
           },
-          signature
-        )
+          signature,
+        ),
       ).to.be.revertedWith("OTP already exists for this transaction ID");
     });
 
     it("Should return false for non-existent transactionId", async function () {
-      const { otpSystem, user } = await loadFixture(deployOtpSystemFixture);
+      const { otpSystem } = await loadFixture(deployOtpSystemFixture);
 
       const nonExistentTransactionId = ethers.id("non-existent");
       const isValid = await otpSystem.isOtpValid(nonExistentTransactionId);
@@ -239,7 +239,7 @@ describe("OTPSystem", function () {
   describe("Admin Functions", function () {
     it("Should allow admin to blacklist users", async function () {
       const { otpSystem, admin, user } = await loadFixture(
-        deployOtpSystemFixture
+        deployOtpSystemFixture,
       );
 
       await expect(otpSystem.connect(admin).blacklistUser(user.address))
@@ -251,7 +251,7 @@ describe("OTPSystem", function () {
 
     it("Should reject non-admin blacklist attempt", async function () {
       const { otpSystem, user, other } = await loadFixture(
-        deployOtpSystemFixture
+        deployOtpSystemFixture,
       );
 
       await expect(otpSystem.connect(other).blacklistUser(user.address)).to.be
@@ -260,7 +260,7 @@ describe("OTPSystem", function () {
 
     it("Should allow admin to reset expired OTPs", async function () {
       const { otpSystem, admin, user } = await loadFixture(
-        deployOtpSystemFixture
+        deployOtpSystemFixture,
       );
 
       const transactionId = ethers.id("transaction123");
@@ -308,7 +308,7 @@ describe("OTPSystem", function () {
 
     it("Should allow admin to reset expired OTPs - failed since OTP is still valid", async function () {
       const { otpSystem, admin, user } = await loadFixture(
-        deployOtpSystemFixture
+        deployOtpSystemFixture,
       );
 
       const transactionId = ethers.id("transaction123");
@@ -346,7 +346,7 @@ describe("OTPSystem", function () {
 
       // Reset expired OTP
       await expect(
-        otpSystem.connect(admin).resetOtp(transactionId)
+        otpSystem.connect(admin).resetOtp(transactionId),
       ).to.be.revertedWith("OTP is still valid");
     });
   });

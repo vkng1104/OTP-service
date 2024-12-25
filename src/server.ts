@@ -1,18 +1,24 @@
-import express from "express";
-import { ethers } from "ethers";
-import dotenv from "dotenv";
-import OTPSystemJSON from "./artifacts/src/contracts/OTPSystem.sol/OTPSystem.json"; // Import the ABI from the JSON file
 import cors from "cors";
+import dotenv from "dotenv";
+import { ethers } from "ethers";
+import express, { Request, Response } from "express";
+
+import OTPSystemJSON from "./artifacts/src/contracts/OTPSystem.sol/OTPSystem.json"; // Import the ABI from the JSON file
+import {
+  CONTRACT_ADDRESS,
+  ETHEREUM_PROVIDER_URL,
+  PORT,
+  PRIVATE_KEY,
+} from "./configs/env";
+import { OtpRequest } from "./model/request";
+import { ErrorResponse, OtpResponse } from "./model/response";
+import { generateOtp, hashOtp } from "./utils/otpGenerator";
 dotenv.config();
 
 // Initialize Express
 const app = express();
 app.use(express.json());
 app.use(cors());
-
-// Load environment variables
-const { PRIVATE_KEY, ETHEREUM_PROVIDER_URL, CONTRACT_ADDRESS, CHAIN_ID } =
-  process.env;
 
 // Connect to Ethereum network
 const provider = new ethers.JsonRpcProvider(ETHEREUM_PROVIDER_URL);
@@ -22,69 +28,59 @@ const signer = new ethers.Wallet(PRIVATE_KEY as string, provider);
 const contract = new ethers.Contract(
   CONTRACT_ADDRESS as string,
   OTPSystemJSON.abi,
-  signer
+  signer,
 );
 
-// EIP-712 domain configuration
-const domain = {
-  name: "OTPSystem",
-  version: "1",
-  chainId: CHAIN_ID as unknown as number,
-  verifyingContract: CONTRACT_ADDRESS as string,
-};
-
-// EIP-712 struct types
-const types = {
-  OTPRequest: [
-    { name: "transactionId", type: "bytes32" },
-    { name: "hashedOtp", type: "bytes32" },
-    { name: "userAddress", type: "address" },
-    { name: "expirationTime", type: "uint256" },
-  ],
-};
-
-// Helper function to hash the OTP
-function hashOtp(otp: string): string {
-  return ethers.keccak256(ethers.toUtf8Bytes(otp));
-}
-
 // Endpoint to request an OTP
-app.post("/request-otp", async (req, res) => {
-  try {
-    const { transactionId, otp, userAddress } = req.body;
+app.post(
+  "/api/request-otp",
+  async (
+    req: Request<unknown, unknown, OtpRequest>,
+    res: Response<OtpResponse | ErrorResponse>,
+  ) => {
+    try {
+      const { hashedTransactionId, reqOtp, userAddress, signature } = req.body;
 
-    // Hash the OTP
-    const hashedOtp = hashOtp(otp);
+      // Validate request parameters
+      if (!hashedTransactionId || !userAddress || !signature) {
+        res.status(400).json({ error: "Missing required fields" });
+        return;
+      }
 
-    // Set expiration time (e.g., 5 minutes from now)
-    const expirationTime = Math.floor(Date.now() / 1000) + 300;
+      // Generate OTP if not provided
+      const otp = reqOtp || generateOtp(6);
 
-    // Create OTPRequest struct
-    const value = {
-      transactionId: ethers.id(transactionId), // Hash the transaction ID for uniqueness
-      hashedOtp,
-      userAddress,
-      expirationTime,
-    };
+      // Hash the OTP
+      const hashedOtp = hashOtp(otp);
 
-    // Sign the request
-    const signature = await signer.signTypedData(domain, types, value);
+      // Set expiration time (e.g., 5 minutes from now)
+      const expirationTime = Math.floor(Date.now() / 1000) + 300;
 
-    // Submit OTP request to the blockchain
-    const tx = await contract.requestOtp(value, signature);
-    await tx.wait();
+      // Create OTPRequest struct
+      const value = {
+        transactionId: hashedTransactionId, // Hash the transaction ID for uniqueness
+        hashedOtp,
+        userAddress,
+        expirationTime,
+      };
 
-    res.status(200).json({
-      message: "OTP requested successfully",
-      transactionHash: tx.hash,
-      transactionId: value.transactionId,
-      hashedOtp,
-    });
-  } catch (error) {
-    console.error("Error in /request-otp:", error);
-    res.status(500).json({ error: error });
-  }
-});
+      // Submit OTP request to the blockchain
+      const tx = await contract.requestOtp(value, signature);
+      await tx.wait();
+
+      res.status(200).json({
+        message: "OTP requested successfully",
+        transactionHash: tx.hash,
+        transactionId: value.transactionId,
+        otp,
+      });
+    } catch (error: unknown) {
+      // eslint-disable-next-line no-console
+      console.error("Error in /api/request-otp:", error);
+      res.status(500).json({ error: String(error) || "Internal Server Error" });
+    }
+  },
+);
 
 // Endpoint to verify an OTP
 app.post("/verify-otp", async (req, res) => {
@@ -98,6 +94,7 @@ app.post("/verify-otp", async (req, res) => {
     const tx = await contract.verifyOtp(ethers.id(transactionId), hashedOtp);
     const receipt = await tx.wait();
 
+    // eslint-disable-next-line no-console
     console.log(receipt.events);
 
     res.status(200).json({
@@ -106,6 +103,7 @@ app.post("/verify-otp", async (req, res) => {
       success: true,
     });
   } catch (error) {
+    // eslint-disable-next-line no-console
     console.error("Error in /verify-otp:", error);
     res.status(500).json({ error: error });
   }
@@ -121,13 +119,15 @@ app.get("/is-otp-valid/:transactionId", async (req, res) => {
 
     res.status(200).json({ transactionId, isValid });
   } catch (error) {
+    // eslint-disable-next-line no-console
     console.error("Error in /is-otp-valid:", error);
     res.status(500).json({ error: error });
   }
 });
 
 // Start the server
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+const port = PORT || 3000;
+app.listen(port, () => {
+  // eslint-disable-next-line no-console
+  console.log(`Server running on http://localhost:${port}`);
 });
