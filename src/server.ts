@@ -1,5 +1,4 @@
 import cors from "cors";
-import dotenv from "dotenv";
 import { ethers } from "ethers";
 import express, { Request, Response } from "express";
 
@@ -13,7 +12,6 @@ import {
 import { OtpRequest } from "./model/request";
 import { ErrorResponse, OtpResponse } from "./model/response";
 import { generateOtp, hashOtp } from "./utils/otpGenerator";
-dotenv.config();
 
 // Initialize Express
 const app = express();

@@ -4,13 +4,11 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const cors_1 = __importDefault(require("cors"));
-const dotenv_1 = __importDefault(require("dotenv"));
 const ethers_1 = require("ethers");
 const express_1 = __importDefault(require("express"));
 const OTPSystem_json_1 = __importDefault(require("./artifacts/src/contracts/OTPSystem.sol/OTPSystem.json")); // Import the ABI from the JSON file
 const env_1 = require("./configs/env");
 const otpGenerator_1 = require("./utils/otpGenerator");
-dotenv_1.default.config();
 // Initialize Express
 const app = (0, express_1.default)();
 app.use(express_1.default.json());
