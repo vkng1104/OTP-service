@@ -9,9 +9,19 @@ import {
   PORT,
   PRIVATE_KEY,
 } from "./configs/env";
-import { OtpRequest } from "./model/request";
-import { ErrorResponse, OtpResponse } from "./model/response";
-import { generateOtp, hashOtp } from "./utils/otpGenerator";
+import {
+  OtpGeneratedRequest,
+  OtpRequestRequest,
+  OtpVerificationRequest,
+} from "./model/request";
+import {
+  ErrorResponse,
+  OtpResponse,
+  OtpVerificationResponse,
+} from "./model/response";
+import { OtpView } from "./model/view";
+import { handleException } from "./utils/handleException";
+import { generateOtp } from "./utils/otpGenerator";
 
 // Initialize Express
 const app = express();
@@ -29,37 +39,59 @@ const contract = new ethers.Contract(
   signer,
 );
 
+// Endpoint to generate OTP and provide related data
+app.post(
+  "/api/generate-otp",
+  async (
+    req: Request<unknown, unknown, OtpGeneratedRequest>,
+    res: Response<OtpView | ErrorResponse>,
+  ) => {
+    try {
+      const { duration } = req.body;
+
+      // Generate an OTP
+      const otp = generateOtp(6);
+
+      // Default to 5 minutes if duration is not provided
+      const expectedDuration = duration || 300;
+      // Calculate expiration time (current time + duration in seconds)
+      const expirationTime = Math.floor(Date.now() / 1000) + expectedDuration;
+
+      // Return the generated OTP and expiration time
+      res.status(200).json({
+        otp,
+        expirationTime,
+      });
+    } catch (error: unknown) {
+      const errorResponse = handleException("/api/generate-otp", error);
+      res.status(errorResponse.code).json(errorResponse);
+    }
+  },
+);
+
 // Endpoint to request an OTP
 app.post(
   "/api/request-otp",
   async (
-    req: Request<unknown, unknown, OtpRequest>,
+    req: Request<unknown, unknown, OtpRequestRequest>,
     res: Response<OtpResponse | ErrorResponse>,
   ) => {
     try {
-      const { hashedTransactionId, reqOtp, userAddress, signature } = req.body;
+      const { payload, transactionId, userAddress, signature } = req.body;
 
       // Validate request parameters
-      if (!hashedTransactionId || !userAddress || !signature) {
-        res.status(400).json({ error: "Missing required fields" });
+      if (!transactionId || !userAddress || !signature) {
+        res.status(400).json({ code: 400, message: "Missing required fields" });
         return;
       }
 
-      // Generate OTP if not provided
-      const otp = reqOtp || generateOtp(6);
-
-      // Hash the OTP
-      const hashedOtp = hashOtp(otp);
-
-      // Set expiration time (e.g., 5 minutes from now)
-      const expirationTime = Math.floor(Date.now() / 1000) + 300;
-
-      // Create OTPRequest struct
+      // Create OtpRequestRequest struct
       const value = {
-        transactionId: hashedTransactionId, // Hash the transaction ID for uniqueness
-        hashedOtp,
+        transactionId: transactionId,
+        otp: payload.otp,
+        expirationTime: payload.expirationTime,
         userAddress,
-        expirationTime,
+        nonce: 0,
       };
 
       // Submit OTP request to the blockchain
@@ -70,58 +102,83 @@ app.post(
         message: "OTP requested successfully",
         transactionHash: tx.hash,
         transactionId: value.transactionId,
-        otp,
+        otp: payload.otp,
       });
     } catch (error: unknown) {
-      // eslint-disable-next-line no-console
-      console.error("Error in /api/request-otp:", error);
-      res.status(500).json({ error: String(error) || "Internal Server Error" });
+      const errorResponse = handleException("/api/request-otp", error);
+      res.status(errorResponse.code).json(errorResponse);
     }
   },
 );
 
 // Endpoint to verify an OTP
-app.post("/verify-otp", async (req, res) => {
-  try {
-    const { transactionId, otp } = req.body;
+app.post(
+  "/api/verify-otp",
+  async (
+    req: Request<unknown, unknown, OtpVerificationRequest>,
+    res: Response<OtpVerificationResponse | ErrorResponse>,
+  ) => {
+    try {
+      const { transactionId, otp, signature } = req.body;
 
-    // Hash the OTP
-    const hashedOtp = hashOtp(otp);
+      // Validate request parameters
+      if (!transactionId || !otp || !signature) {
+        res.status(400).json({ code: 400, message: "Missing required fields" });
+        return;
+      }
 
-    // Verify the OTP on-chain
-    const tx = await contract.verifyOtp(ethers.id(transactionId), hashedOtp);
-    const receipt = await tx.wait();
+      // Interact with the smart contract to verify the OTP
+      const tx = await contract.verifyOtp(transactionId, otp, signature);
 
-    // eslint-disable-next-line no-console
-    console.log(receipt.events);
+      // Wait for the transaction to be mined
+      const receipt = await tx.wait();
 
-    res.status(200).json({
-      message: "OTP verified successfully",
-      transactionHash: tx.hash,
-      success: true,
-    });
-  } catch (error) {
-    // eslint-disable-next-line no-console
-    console.error("Error in /verify-otp:", error);
-    res.status(500).json({ error: error });
-  }
-});
+      res.status(200).json({
+        success: true,
+        message: "OTP verified successfully",
+        transactionHash: receipt.transactionHash,
+      });
+    } catch (error: unknown) {
+      const errorResponse = handleException("/api/verify-otp", error);
+      res.status(errorResponse.code).json(errorResponse);
+    }
+  },
+);
 
 // Endpoint to check OTP validity
-app.get("/is-otp-valid/:transactionId", async (req, res) => {
-  try {
-    const transactionId = req.params.transactionId;
+app.get(
+  "/api/is-otp-valid/:transactionId",
+  async (
+    req: Request<{ transactionId: string }>,
+    res: Response<{ isValid: boolean } | ErrorResponse>,
+  ) => {
+    try {
+      const { transactionId } = req.params;
 
-    // Check OTP validity on-chain
-    const isValid = await contract.isOtpValid(ethers.id(transactionId));
+      // Validate request parameters
+      if (!transactionId) {
+        res
+          .status(400)
+          .json({ code: 400, message: "Missing transactionId parameter" });
+        return;
+      }
 
-    res.status(200).json({ transactionId, isValid });
-  } catch (error) {
-    // eslint-disable-next-line no-console
-    console.error("Error in /is-otp-valid:", error);
-    res.status(500).json({ error: error });
-  }
-});
+      // Hash the transactionId to match the on-chain format
+      const hashedTransactionId = ethers.keccak256(
+        ethers.toUtf8Bytes(transactionId),
+      );
+
+      // Check OTP validity on-chain
+      const isValid = await contract.isOtpValid(hashedTransactionId);
+
+      // Return the result
+      res.status(200).json({ isValid });
+    } catch (error: unknown) {
+      const errorResponse = handleException("/api/is-otp-valid", error);
+      res.status(errorResponse.code).json(errorResponse);
+    }
+  },
+);
 
 // Start the server
 const port = PORT || 3000;
