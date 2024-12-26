@@ -32,17 +32,14 @@ describe("OTPSystem", function () {
     describe("OTP Functionality", function () {
         it("Should request OTP successfully with valid signature", async function () {
             const { otpSystem, user } = await (0, network_helpers_1.loadFixture)(deployOtpSystemFixture);
-            // Define OTPRequest parameters
-            const transactionId = ethers_1.ethers.id("transaction123");
-            const hashedOtp = ethers_1.ethers.id("123456");
             const expirationTime = Math.floor(Date.now() / 1000) + 3600;
             const request = {
-                transactionId,
-                hashedOtp,
+                transactionId: "transaction123",
+                otp: "123456",
                 userAddress: user.address,
                 expirationTime,
+                nonce: 0,
             };
-            // Generate the hash for the OTP request
             const domain = {
                 name: "OTPSystem",
                 version: "1",
@@ -51,36 +48,32 @@ describe("OTPSystem", function () {
             };
             const types = {
                 OTPRequest: [
-                    { name: "transactionId", type: "bytes32" },
-                    { name: "hashedOtp", type: "bytes32" },
+                    { name: "transactionId", type: "string" },
+                    { name: "otp", type: "string" },
                     { name: "userAddress", type: "address" },
                     { name: "expirationTime", type: "uint256" },
+                    { name: "nonce", type: "uint256" },
                 ],
             };
             const signature = await user.signTypedData(domain, types, request);
-            // Request OTP
             await (0, chai_1.expect)(otpSystem.connect(user).requestOtp(request, signature))
                 .to.emit(otpSystem, "OtpRequested")
-                .withArgs(transactionId, user.address);
-            // Check stored data
-            const storedOtp = await otpSystem.otpRecords(transactionId);
-            (0, chai_1.expect)(storedOtp.hashedOtp).to.equal(hashedOtp);
+                .withArgs(ethers_1.ethers.keccak256(ethers_1.ethers.toUtf8Bytes(request.transactionId)), user.address);
+            const hashedTransactionId = ethers_1.ethers.keccak256(ethers_1.ethers.toUtf8Bytes(request.transactionId));
+            const storedOtp = await otpSystem.otpRecords(hashedTransactionId);
             (0, chai_1.expect)(storedOtp.userAddress).to.equal(user.address);
             (0, chai_1.expect)(storedOtp.expirationTime).to.equal(expirationTime);
         });
         it("Should verify OTP successfully", async function () {
             const { otpSystem, user } = await (0, network_helpers_1.loadFixture)(deployOtpSystemFixture);
-            // Define OTPRequest parameters
-            const transactionId = ethers_1.ethers.id("transaction123");
-            const hashedOtp = ethers_1.ethers.id("123456");
             const expirationTime = Math.floor(Date.now() / 1000) + 3600;
             const request = {
-                transactionId,
-                hashedOtp,
+                transactionId: "transaction123",
+                otp: "123456",
                 userAddress: user.address,
                 expirationTime,
+                nonce: 0,
             };
-            // Generate signature
             const domain = {
                 name: "OTPSystem",
                 version: "1",
@@ -89,37 +82,46 @@ describe("OTPSystem", function () {
             };
             const types = {
                 OTPRequest: [
-                    { name: "transactionId", type: "bytes32" },
-                    { name: "hashedOtp", type: "bytes32" },
+                    { name: "transactionId", type: "string" },
+                    { name: "otp", type: "string" },
                     { name: "userAddress", type: "address" },
                     { name: "expirationTime", type: "uint256" },
+                    { name: "nonce", type: "uint256" },
                 ],
             };
             const signature = await user.signTypedData(domain, types, request);
-            // Request OTP
             await otpSystem.connect(user).requestOtp(request, signature);
-            const isValid = await otpSystem.isOtpValid(transactionId);
-            (0, chai_1.expect)(isValid).to.be.true;
-            // Verify OTP
-            await (0, chai_1.expect)(otpSystem.connect(user).verifyOtp(transactionId, hashedOtp))
+            const hashedTransactionId = ethers_1.ethers.keccak256(ethers_1.ethers.toUtf8Bytes(request.transactionId));
+            const verification = {
+                transactionId: request.transactionId,
+                otp: request.otp,
+                userAddress: request.userAddress,
+            };
+            const verificationTypes = {
+                OTPVerification: [
+                    { name: "transactionId", type: "string" },
+                    { name: "otp", type: "string" },
+                    { name: "userAddress", type: "address" },
+                ],
+            };
+            const verificationSignature = await user.signTypedData(domain, verificationTypes, verification);
+            await (0, chai_1.expect)(otpSystem
+                .connect(user)
+                .verifyOtp(request.transactionId, request.otp, verificationSignature))
                 .to.emit(otpSystem, "OtpVerified")
-                .withArgs(transactionId, user.address, true);
-            // Ensure OTP is marked as used
-            (0, chai_1.expect)(await otpSystem.isUsed(transactionId)).to.be.true;
+                .withArgs(hashedTransactionId, user.address, true);
+            (0, chai_1.expect)(await otpSystem.isUsed(hashedTransactionId)).to.be.true;
         });
-        it("Should reject expired OTP", async function () {
+        it("Should reject OTP verification for expired OTP", async function () {
             const { otpSystem, user } = await (0, network_helpers_1.loadFixture)(deployOtpSystemFixture);
-            // Define OTPRequest parameters
-            const transactionId = ethers_1.ethers.id("transaction123");
-            const hashedOtp = ethers_1.ethers.id("123456");
-            const expirationTime = Math.floor(Date.now() / 1000) - 3600; // Expired time
+            const expirationTime = Math.floor(Date.now() / 1000) - 1;
             const request = {
-                transactionId,
-                hashedOtp,
+                transactionId: "transaction123",
+                otp: "123456",
                 userAddress: user.address,
                 expirationTime,
+                nonce: 0,
             };
-            // Generate signature
             const domain = {
                 name: "OTPSystem",
                 version: "1",
@@ -128,28 +130,26 @@ describe("OTPSystem", function () {
             };
             const types = {
                 OTPRequest: [
-                    { name: "transactionId", type: "bytes32" },
-                    { name: "hashedOtp", type: "bytes32" },
+                    { name: "transactionId", type: "string" },
+                    { name: "otp", type: "string" },
                     { name: "userAddress", type: "address" },
                     { name: "expirationTime", type: "uint256" },
+                    { name: "nonce", type: "uint256" },
                 ],
             };
             const signature = await user.signTypedData(domain, types, request);
-            // Attempt to request OTP with expired time
             await (0, chai_1.expect)(otpSystem.connect(user).requestOtp(request, signature)).to.be.revertedWith("OTP has expired");
         });
-        it("Should not allow requesting an OTP for the same transactionId twice", async function () {
+        it("Should not allow requesting an OTP for the same request - prevent OTP replay attack", async function () {
             const { otpSystem, user } = await (0, network_helpers_1.loadFixture)(deployOtpSystemFixture);
-            const transactionId = ethers_1.ethers.id("transaction123");
-            const hashedOtp = ethers_1.ethers.keccak256(ethers_1.ethers.toUtf8Bytes("123456"));
-            const expirationTime = Math.floor(Date.now() / 1000) + 300;
+            const expirationTime = Math.floor(Date.now() / 1000) + 3600;
             const request = {
-                transactionId,
-                hashedOtp,
+                transactionId: "transaction123",
+                otp: "123456",
                 userAddress: user.address,
                 expirationTime,
+                nonce: 0,
             };
-            // Generate signature
             const domain = {
                 name: "OTPSystem",
                 version: "1",
@@ -158,27 +158,18 @@ describe("OTPSystem", function () {
             };
             const types = {
                 OTPRequest: [
-                    { name: "transactionId", type: "bytes32" },
-                    { name: "hashedOtp", type: "bytes32" },
+                    { name: "transactionId", type: "string" },
+                    { name: "otp", type: "string" },
                     { name: "userAddress", type: "address" },
                     { name: "expirationTime", type: "uint256" },
+                    { name: "nonce", type: "uint256" },
                 ],
             };
             const signature = await user.signTypedData(domain, types, request);
             // Request OTP for the first time
-            await otpSystem.connect(user).requestOtp({
-                transactionId,
-                hashedOtp,
-                userAddress: user.address,
-                expirationTime,
-            }, signature);
-            // Try requesting OTP for the same transactionId again
-            await (0, chai_1.expect)(otpSystem.connect(user).requestOtp({
-                transactionId,
-                hashedOtp,
-                userAddress: user.address,
-                expirationTime,
-            }, signature)).to.be.revertedWith("OTP already exists for this transaction ID");
+            await otpSystem.connect(user).requestOtp(request, signature);
+            // Attempt to request OTP with the same transactionId
+            await (0, chai_1.expect)(otpSystem.connect(user).requestOtp(request, signature)).to.be.revertedWith("Invalid nonce");
         });
         it("Should return false for non-existent transactionId", async function () {
             const { otpSystem } = await (0, network_helpers_1.loadFixture)(deployOtpSystemFixture);
@@ -200,19 +191,27 @@ describe("OTPSystem", function () {
             await (0, chai_1.expect)(otpSystem.connect(other).blacklistUser(user.address)).to.be
                 .reverted;
         });
+        it("Should allow admin to remove users from blacklist", async function () {
+            const { otpSystem, admin, user } = await (0, network_helpers_1.loadFixture)(deployOtpSystemFixture);
+            // Blacklist the user first
+            await otpSystem.connect(admin).blacklistUser(user.address);
+            // Remove the user from blacklist
+            await (0, chai_1.expect)(otpSystem.connect(admin).removeUserFromBlacklist(user.address))
+                .to.emit(otpSystem, "UserRemovedFromBlacklist")
+                .withArgs(user.address);
+            (0, chai_1.expect)(await otpSystem.blacklisted(user.address)).to.be.false;
+        });
         it("Should allow admin to reset expired OTPs", async function () {
             const { otpSystem, admin, user } = await (0, network_helpers_1.loadFixture)(deployOtpSystemFixture);
-            const transactionId = ethers_1.ethers.id("transaction123");
-            const hashedOtp = ethers_1.ethers.id("123456");
-            // Set an expiration time slightly in the future for `requestOtp`
-            const expirationTime = Math.floor(Date.now() / 1000) + 5; // 5 seconds from now
+            const expirationTime = Math.floor(Date.now() / 1000) + 5; // Expires in 5 seconds
+            const nonce = 0;
             const request = {
-                transactionId,
-                hashedOtp,
+                transactionId: "transaction123",
+                otp: "123456",
                 userAddress: user.address,
                 expirationTime,
+                nonce,
             };
-            // Generate signature
             const domain = {
                 name: "OTPSystem",
                 version: "1",
@@ -221,33 +220,37 @@ describe("OTPSystem", function () {
             };
             const types = {
                 OTPRequest: [
-                    { name: "transactionId", type: "bytes32" },
-                    { name: "hashedOtp", type: "bytes32" },
+                    { name: "transactionId", type: "string" },
+                    { name: "otp", type: "string" },
                     { name: "userAddress", type: "address" },
                     { name: "expirationTime", type: "uint256" },
+                    { name: "nonce", type: "uint256" },
                 ],
             };
             const signature = await user.signTypedData(domain, types, request);
             // Request OTP
             await otpSystem.connect(user).requestOtp(request, signature);
-            // Wait for the OTP to expire
-            await new Promise((resolve) => setTimeout(resolve, 10000)); // 10 seconds
+            // Wait for OTP to expire
+            await new Promise((resolve) => setTimeout(resolve, 6000)); // Wait 6 seconds
+            const hashedTransactionId = ethers_1.ethers.keccak256(ethers_1.ethers.toUtf8Bytes(request.transactionId));
             // Reset expired OTP
-            await (0, chai_1.expect)(otpSystem.connect(admin).resetOtp(transactionId)).to.not.be
-                .reverted;
+            await (0, chai_1.expect)(otpSystem.connect(admin).resetOtp(hashedTransactionId)).to
+                .not.be.reverted;
+            // Ensure OTP record is deleted
+            const otpRecord = await otpSystem.otpRecords(hashedTransactionId);
+            (0, chai_1.expect)(otpRecord.transactionId).to.equal(""); // Should be cleared
         });
         it("Should allow admin to reset expired OTPs - failed since OTP is still valid", async function () {
             const { otpSystem, admin, user } = await (0, network_helpers_1.loadFixture)(deployOtpSystemFixture);
-            const transactionId = ethers_1.ethers.id("transaction123");
-            const hashedOtp = ethers_1.ethers.id("123456");
-            const expirationTime = Math.floor(Date.now() / 1000) + 3600;
+            const expirationTime = Math.floor(Date.now() / 1000) + 3600; // Expires in 1 hour
+            const nonce = 0;
             const request = {
-                transactionId,
-                hashedOtp,
+                transactionId: "transaction123",
+                otp: "123456",
                 userAddress: user.address,
                 expirationTime,
+                nonce,
             };
-            // Generate signature
             const domain = {
                 name: "OTPSystem",
                 version: "1",
@@ -256,17 +259,19 @@ describe("OTPSystem", function () {
             };
             const types = {
                 OTPRequest: [
-                    { name: "transactionId", type: "bytes32" },
-                    { name: "hashedOtp", type: "bytes32" },
+                    { name: "transactionId", type: "string" },
+                    { name: "otp", type: "string" },
                     { name: "userAddress", type: "address" },
                     { name: "expirationTime", type: "uint256" },
+                    { name: "nonce", type: "uint256" },
                 ],
             };
             const signature = await user.signTypedData(domain, types, request);
             // Request OTP
             await otpSystem.connect(user).requestOtp(request, signature);
-            // Reset expired OTP
-            await (0, chai_1.expect)(otpSystem.connect(admin).resetOtp(transactionId)).to.be.revertedWith("OTP is still valid");
+            const hashedTransactionId = ethers_1.ethers.keccak256(ethers_1.ethers.toUtf8Bytes(request.transactionId));
+            // Attempt to reset valid OTP
+            await (0, chai_1.expect)(otpSystem.connect(admin).resetOtp(hashedTransactionId)).to.be.revertedWith("OTP is still valid");
         });
     });
 });

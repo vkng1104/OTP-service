@@ -8,6 +8,7 @@ const ethers_1 = require("ethers");
 const express_1 = __importDefault(require("express"));
 const OTPSystem_json_1 = __importDefault(require("./artifacts/src/contracts/OTPSystem.sol/OTPSystem.json")); // Import the ABI from the JSON file
 const env_1 = require("./configs/env");
+const handleException_1 = require("./utils/handleException");
 const otpGenerator_1 = require("./utils/otpGenerator");
 // Initialize Express
 const app = (0, express_1.default)();
@@ -18,27 +19,43 @@ const provider = new ethers_1.ethers.JsonRpcProvider(env_1.ETHEREUM_PROVIDER_URL
 const signer = new ethers_1.ethers.Wallet(env_1.PRIVATE_KEY, provider);
 // Connect to the deployed contract
 const contract = new ethers_1.ethers.Contract(env_1.CONTRACT_ADDRESS, OTPSystem_json_1.default.abi, signer);
+// Endpoint to generate OTP and provide related data
+app.post("/api/generate-otp", async (req, res) => {
+    try {
+        const { duration } = req.body;
+        // Generate an OTP
+        const otp = (0, otpGenerator_1.generateOtp)(6);
+        // Default to 5 minutes if duration is not provided
+        const expectedDuration = duration || 300;
+        // Calculate expiration time (current time + duration in seconds)
+        const expirationTime = Math.floor(Date.now() / 1000) + expectedDuration;
+        // Return the generated OTP and expiration time
+        res.status(200).json({
+            otp,
+            expirationTime,
+        });
+    }
+    catch (error) {
+        const errorResponse = (0, handleException_1.handleException)("/api/generate-otp", error);
+        res.status(errorResponse.code).json(errorResponse);
+    }
+});
 // Endpoint to request an OTP
 app.post("/api/request-otp", async (req, res) => {
     try {
-        const { hashedTransactionId, reqOtp, userAddress, signature } = req.body;
+        const { payload, transactionId, userAddress, signature } = req.body;
         // Validate request parameters
-        if (!hashedTransactionId || !userAddress || !signature) {
-            res.status(400).json({ error: "Missing required fields" });
+        if (!transactionId || !userAddress || !signature) {
+            res.status(400).json({ code: 400, message: "Missing required fields" });
             return;
         }
-        // Generate OTP if not provided
-        const otp = reqOtp || (0, otpGenerator_1.generateOtp)(6);
-        // Hash the OTP
-        const hashedOtp = (0, otpGenerator_1.hashOtp)(otp);
-        // Set expiration time (e.g., 5 minutes from now)
-        const expirationTime = Math.floor(Date.now() / 1000) + 300;
-        // Create OTPRequest struct
+        // Create OtpRequestRequest struct
         const value = {
-            transactionId: hashedTransactionId, // Hash the transaction ID for uniqueness
-            hashedOtp,
+            transactionId: transactionId,
+            otp: payload.otp,
+            expirationTime: payload.expirationTime,
             userAddress,
-            expirationTime,
+            nonce: 0,
         };
         // Submit OTP request to the blockchain
         const tx = await contract.requestOtp(value, signature);
@@ -47,50 +64,59 @@ app.post("/api/request-otp", async (req, res) => {
             message: "OTP requested successfully",
             transactionHash: tx.hash,
             transactionId: value.transactionId,
-            otp,
+            otp: payload.otp,
         });
     }
     catch (error) {
-        // eslint-disable-next-line no-console
-        console.error("Error in /api/request-otp:", error);
-        res.status(500).json({ error: String(error) || "Internal Server Error" });
+        const errorResponse = (0, handleException_1.handleException)("/api/request-otp", error);
+        res.status(errorResponse.code).json(errorResponse);
     }
 });
 // Endpoint to verify an OTP
-app.post("/verify-otp", async (req, res) => {
+app.post("/api/verify-otp", async (req, res) => {
     try {
-        const { transactionId, otp } = req.body;
-        // Hash the OTP
-        const hashedOtp = (0, otpGenerator_1.hashOtp)(otp);
-        // Verify the OTP on-chain
-        const tx = await contract.verifyOtp(ethers_1.ethers.id(transactionId), hashedOtp);
+        const { transactionId, otp, signature } = req.body;
+        // Validate request parameters
+        if (!transactionId || !otp || !signature) {
+            res.status(400).json({ code: 400, message: "Missing required fields" });
+            return;
+        }
+        // Interact with the smart contract to verify the OTP
+        const tx = await contract.verifyOtp(transactionId, otp, signature);
+        // Wait for the transaction to be mined
         const receipt = await tx.wait();
-        // eslint-disable-next-line no-console
-        console.log(receipt.events);
         res.status(200).json({
-            message: "OTP verified successfully",
-            transactionHash: tx.hash,
             success: true,
+            message: "OTP verified successfully",
+            transactionHash: receipt.transactionHash,
         });
     }
     catch (error) {
-        // eslint-disable-next-line no-console
-        console.error("Error in /verify-otp:", error);
-        res.status(500).json({ error: error });
+        const errorResponse = (0, handleException_1.handleException)("/api/verify-otp", error);
+        res.status(errorResponse.code).json(errorResponse);
     }
 });
 // Endpoint to check OTP validity
-app.get("/is-otp-valid/:transactionId", async (req, res) => {
+app.get("/api/is-otp-valid/:transactionId", async (req, res) => {
     try {
-        const transactionId = req.params.transactionId;
+        const { transactionId } = req.params;
+        // Validate request parameters
+        if (!transactionId) {
+            res
+                .status(400)
+                .json({ code: 400, message: "Missing transactionId parameter" });
+            return;
+        }
+        // Hash the transactionId to match the on-chain format
+        const hashedTransactionId = ethers_1.ethers.keccak256(ethers_1.ethers.toUtf8Bytes(transactionId));
         // Check OTP validity on-chain
-        const isValid = await contract.isOtpValid(ethers_1.ethers.id(transactionId));
-        res.status(200).json({ transactionId, isValid });
+        const isValid = await contract.isOtpValid(hashedTransactionId);
+        // Return the result
+        res.status(200).json({ isValid });
     }
     catch (error) {
-        // eslint-disable-next-line no-console
-        console.error("Error in /is-otp-valid:", error);
-        res.status(500).json({ error: error });
+        const errorResponse = (0, handleException_1.handleException)("/api/is-otp-valid", error);
+        res.status(errorResponse.code).json(errorResponse);
     }
 });
 // Start the server

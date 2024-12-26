@@ -6,5 +6,14 @@ export interface OtpResponse {
 }
 
 export interface ErrorResponse {
-  error: string;
+  code: number;
+  message: string;
+  details?: unknown;
+}
+
+// Interface for the OTP verification response
+export interface OtpVerificationResponse {
+  success: boolean;
+  message: string;
+  transactionHash?: string;
 }
