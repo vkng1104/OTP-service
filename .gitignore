@@ -1,19 +1,17 @@
 node_modules
 .env
 .DS_Store
+dist
 
 # Hardhat files
 /cache
 /artifacts
 src/cache
 src/artifacts
-dist/src/artifacts
 
 # TypeChain files
 /typechain
 /typechain-types
-dist/typechain
-dist/typechain-types
 
 # solidity-coverage files
 /coverage

@@ -26,3 +26,4 @@ const config = {
     },
 };
 exports.default = config;
+//# sourceMappingURL=hardhat.config.js.map

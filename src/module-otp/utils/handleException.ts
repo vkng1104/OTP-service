@@ -1,5 +1,6 @@
-import { ErrorResponse } from "../model/response";
-import { TransactionRevertLog } from "../model/view/error";
+import { ErrorResponse } from "~/module-common/models";
+
+import { TransactionRevertLog } from "../models/views/error";
 
 export function handleException(
   endpoint: string,
