@@ -5,7 +5,7 @@ import { AppModule } from "./app.module";
 import { AllExceptionsFilter } from "./module-common/filters/all-exceptions.filter";
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { cors: true });
 
   // Enable global validation with custom error messages
   app.useGlobalPipes(

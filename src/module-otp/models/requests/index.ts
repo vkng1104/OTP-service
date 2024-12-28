@@ -2,14 +2,11 @@ import { Expose } from "class-transformer";
 import {
   IsNotEmpty,
   IsNumber,
-  IsObject,
   IsOptional,
   IsString,
   Max,
   Min,
 } from "class-validator";
-
-import { OtpView } from "../views";
 
 export class OtpGeneratedRequest {
   @IsOptional()
@@ -30,9 +27,14 @@ export class OtpRequestRequest {
   @IsNotEmpty()
   transactionId: string;
 
-  @IsObject()
+  @IsString()
   @IsNotEmpty()
-  payload: OtpView;
+  otp: string;
+
+  @Expose({ name: "expiration_time" })
+  @IsNumber()
+  @Min(1)
+  expirationTime: number;
 
   @Expose({ name: "user_address" })
   @IsString()

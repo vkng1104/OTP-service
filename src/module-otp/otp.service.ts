@@ -56,7 +56,8 @@ export class OtpService {
 
   async requestOtp({
     transactionId,
-    payload,
+    otp,
+    expirationTime,
     userAddress,
     signature,
   }: OtpRequestRequest): Promise<OtpResponse> {
@@ -64,9 +65,9 @@ export class OtpService {
       // Create OtpRequestRequest struct
       const value = {
         transactionId: transactionId,
-        otp: payload.otp,
+        otp: otp,
         userAddress,
-        expirationTime: payload.expirationTime,
+        expirationTime: expirationTime,
         nonce: 0,
       };
 
@@ -77,8 +78,8 @@ export class OtpService {
       return {
         message: "OTP requested successfully",
         transactionHash: tx.hash,
-        transactionId: value.transactionId,
-        otp: payload.otp,
+        transactionId: transactionId,
+        otp: otp,
       };
     } catch (error: unknown) {
       const errorResponse = handleException("requesting OTP", error);
