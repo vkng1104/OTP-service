@@ -44,7 +44,6 @@ describe("OTPSystem", function () {
         otp: "123456",
         userAddress: user.address,
         expirationTime,
-        nonce: 0,
       };
 
       const domain = {
@@ -60,7 +59,6 @@ describe("OTPSystem", function () {
           { name: "otp", type: "string" },
           { name: "userAddress", type: "address" },
           { name: "expirationTime", type: "uint256" },
-          { name: "nonce", type: "uint256" },
         ],
       };
 
@@ -92,7 +90,6 @@ describe("OTPSystem", function () {
         otp: "123456",
         userAddress: user.address,
         expirationTime,
-        nonce: 0,
       };
 
       const domain = {
@@ -108,7 +105,6 @@ describe("OTPSystem", function () {
           { name: "otp", type: "string" },
           { name: "userAddress", type: "address" },
           { name: "expirationTime", type: "uint256" },
-          { name: "nonce", type: "uint256" },
         ],
       };
 
@@ -198,7 +194,6 @@ describe("OTPSystem", function () {
         otp: "123456",
         userAddress: user.address,
         expirationTime,
-        nonce: 0,
       };
 
       const domain = {
@@ -214,7 +209,6 @@ describe("OTPSystem", function () {
           { name: "otp", type: "string" },
           { name: "userAddress", type: "address" },
           { name: "expirationTime", type: "uint256" },
-          { name: "nonce", type: "uint256" },
         ],
       };
 
@@ -226,7 +220,7 @@ describe("OTPSystem", function () {
       // Attempt to request OTP with the same transactionId
       await expect(
         otpSystem.connect(user).requestOtp(request, signature),
-      ).to.be.revertedWith("Invalid nonce");
+      ).to.be.revertedWith("OTP already exists for this transaction ID");
     });
 
     it("Should return false for non-existent transactionId", async function () {
@@ -284,14 +278,12 @@ describe("OTPSystem", function () {
       );
 
       const expirationTime = Math.floor(Date.now() / 1000) + 5; // Expires in 5 seconds
-      const nonce = 0;
 
       const request = {
         transactionId: "transaction123",
         otp: "123456",
         userAddress: user.address,
         expirationTime,
-        nonce,
       };
 
       const domain = {
@@ -307,7 +299,6 @@ describe("OTPSystem", function () {
           { name: "otp", type: "string" },
           { name: "userAddress", type: "address" },
           { name: "expirationTime", type: "uint256" },
-          { name: "nonce", type: "uint256" },
         ],
       };
 
@@ -338,14 +329,12 @@ describe("OTPSystem", function () {
       );
 
       const expirationTime = Math.floor(Date.now() / 1000) + 3600; // Expires in 1 hour
-      const nonce = 0;
 
       const request = {
         transactionId: "transaction123",
         otp: "123456",
         userAddress: user.address,
         expirationTime,
-        nonce,
       };
 
       const domain = {
@@ -361,7 +350,6 @@ describe("OTPSystem", function () {
           { name: "otp", type: "string" },
           { name: "userAddress", type: "address" },
           { name: "expirationTime", type: "uint256" },
-          { name: "nonce", type: "uint256" },
         ],
       };
 

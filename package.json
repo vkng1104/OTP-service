@@ -8,7 +8,7 @@
     "compile": "npx hardhat compile",
     "start-node-local": "npx hardhat node",
     "deploy-local": "npx hardhat ignition deploy ./ignition/modules/OTPSystem.ts --network localhost",
-    "deploy-sepolia": "npx hardhat ignition deploy ./ignition/modules/OTPSystem.ts --network sepolia",
+    "deploy-sepolia": "rm -rf ignition/deployments && npx hardhat ignition deploy ./ignition/modules/OTPSystem.ts --network sepolia",
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",

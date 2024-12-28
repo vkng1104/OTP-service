@@ -68,7 +68,6 @@ export class OtpService {
         otp: otp,
         userAddress,
         expirationTime: expirationTime,
-        nonce: 0,
       };
 
       // Submit OTP request to the blockchain

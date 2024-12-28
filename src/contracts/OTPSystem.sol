@@ -15,7 +15,6 @@ contract OTPSystem is EIP712, AccessControl {
     string otp; // Store OTP as plain text
     address userAddress;
     uint256 expirationTime;
-    uint256 nonce; // Replay protection for request phase
   }
 
   struct OTPVerification {
@@ -27,7 +26,7 @@ contract OTPSystem is EIP712, AccessControl {
   // Type hashes for EIP-712 structs
   bytes32 private constant OTPREQUEST_TYPEHASH =
     keccak256(
-      "OTPRequest(string transactionId,string otp,address userAddress,uint256 expirationTime,uint256 nonce)"
+      "OTPRequest(string transactionId,string otp,address userAddress,uint256 expirationTime)"
     );
   bytes32 private constant OTPVERIFICATION_TYPEHASH =
     keccak256(
@@ -45,9 +44,6 @@ contract OTPSystem is EIP712, AccessControl {
 
   // To track whether address is blacklisted
   mapping(address => bool) public blacklisted;
-
-  // Nonces for replay protection during OTP requests
-  mapping(address => uint256) public userNonces;
 
   // Event triggered when an OTP is requested
   event OtpRequested(bytes32 indexed transactionId, address indexed user);
@@ -88,8 +84,7 @@ contract OTPSystem is EIP712, AccessControl {
             keccak256(bytes(request.transactionId)),
             keccak256(bytes(request.otp)),
             request.userAddress,
-            request.expirationTime,
-            request.nonce
+            request.expirationTime
           )
         )
       );
@@ -130,9 +125,6 @@ contract OTPSystem is EIP712, AccessControl {
     // Ensure the transaction ID hasn't been processed before
     require(!isUsed[hashedTransactionId], "Transaction ID already processed");
 
-    // Check the nonce for the user
-    require(request.nonce == userNonces[request.userAddress], "Invalid nonce");
-
     require(
       otpRecords[hashedTransactionId].expirationTime == 0,
       "OTP already exists for this transaction ID"
@@ -145,9 +137,6 @@ contract OTPSystem is EIP712, AccessControl {
       verifySignature(request, signature, request.userAddress),
       "Invalid signature"
     );
-
-    // Increment the user's nonce
-    userNonces[request.userAddress]++;
 
     // Store the OTP request
     otpRecords[hashedTransactionId] = request;
