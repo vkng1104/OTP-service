@@ -9,82 +9,76 @@ contract OTPSystem is EIP712, AccessControl {
   string private constant SIGNING_DOMAIN = "OTPSystem";
   string private constant SIGNATURE_VERSION = "1";
 
-  // Structure to store OTP data
-  struct OTPRequest {
-    string transactionId;
-    string otp; // Store OTP as plain text
+  struct OTPData {
+    bytes32 commitmentValue; // Stores hashed OTP
     address userAddress;
-    uint256 expirationTime;
+    uint256 index; // Tracks OTP usage order
+  }
+
+  struct UserRegistration {
+    string username;
+    string service;
+    bytes32 commitmentValue; // Initial OTP commitment
   }
 
   struct OTPVerification {
-    string transactionId;
-    string otp;
-    address userAddress;
+    string username;
+    string service;
+    bytes32 otp; // Raw OTP (will be hashed for comparison)
+    bytes32 newCommitmentValue; // Next OTP commitment
   }
 
   // Type hashes for EIP-712 structs
-  bytes32 private constant OTPREQUEST_TYPEHASH =
+  bytes32 private constant USERREGISTRATION_TYPEHASH =
     keccak256(
-      "OTPRequest(string transactionId,string otp,address userAddress,uint256 expirationTime)"
+      "UserRegistration(string username,string service,bytes32 commitmentValue)"
     );
+
   bytes32 private constant OTPVERIFICATION_TYPEHASH =
     keccak256(
-      "OTPVerification(string transactionId,string otp,address userAddress)"
+      "OTPVerification(string username,string service,bytes32 otp,bytes32 newCommitmentValue)"
     );
 
   // Role identifiers
   bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
 
-  // Mapping to store OTP records by transaction ID
-  mapping(bytes32 => OTPRequest) public otpRecords;
+  mapping(bytes32 => OTPData) public otpRecords;
+  mapping(bytes32 => bool) public blacklisted;
 
-  // To track whether OTP has been used
-  mapping(bytes32 => bool) public isUsed;
-
-  // To track whether address is blacklisted
-  mapping(address => bool) public blacklisted;
-
-  // Event triggered when an OTP is requested
-  event OtpRequested(bytes32 indexed transactionId, address indexed user);
-
+  // Event triggered when a user is registered
+  event UserRegistered(bytes32 indexed userId, address indexed user);
   // Event triggered when an OTP is verified
-  event OtpVerified(
-    bytes32 indexed transactionId,
-    address indexed user,
-    bool success
-  );
-
-  event UserBlacklisted(address indexed user);
-  event UserRemovedFromBlacklist(address indexed user);
+  event OtpVerified(bytes32 indexed userId, address indexed user, bool success);
+  event UserBlacklisted(bytes32 indexed userId);
+  event UserRemovedFromBlacklist(bytes32 indexed userId);
 
   constructor() EIP712(SIGNING_DOMAIN, SIGNATURE_VERSION) {
     // Grant the deployer the admin role
     _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
   }
 
-  modifier notBlacklisted(address user) {
-    require(!blacklisted[user], "User is blacklisted");
+  modifier notBlacklisted(bytes32 userId) {
+    require(!blacklisted[userId], "User is blacklisted");
     _;
   }
 
   /**
-   * @dev Hashes the OTPRequest struct as per EIP-712 standard.
-   * @param request The OTPRequest struct.
-   * @return The hashed OTPRequest.
+   * @dev Hashes the UserRegistration struct as per EIP-712 standard.
+   * 
+   * @param request The UserRegistration struct.
+   * @return The hashed UserRegistration.
    */
-  function hashOtpRequest(
-    OTPRequest memory request
+  function hashUserRegistration(
+    UserRegistration memory request
   ) public view returns (bytes32) {
     return
       _hashTypedDataV4(
         keccak256(
           abi.encode(
-            OTPREQUEST_TYPEHASH,
-            keccak256(bytes(request.transactionId)),
-            keccak256(bytes(request.otp)),
-            request.userAddress,
-            request.expirationTime
+            USERREGISTRATION_TYPEHASH,
+            keccak256(bytes(request.username)),
+            keccak256(bytes(request.service)),
+            request.commitmentValue
           )
         )
       );
@@ -92,6 +86,7 @@ contract OTPSystem is EIP712, AccessControl {
 
   /**
    * @dev Hashes the OTPVerification struct as per EIP-712 standard.
+   * 
    * @param verification The OTPVerification struct.
    * @return The hashed OTPVerification.
    */
@@ -103,130 +98,114 @@ contract OTPSystem is EIP712, AccessControl {
         keccak256(
           abi.encode(
             OTPVERIFICATION_TYPEHASH,
-            keccak256(bytes(verification.transactionId)),
-            keccak256(bytes(verification.otp)),
-            verification.userAddress
+            keccak256(bytes(verification.username)),
+            keccak256(bytes(verification.service)),
+            verification.otp,
+            verification.newCommitmentValue
           )
         )
       );
   }
 
   /**
-   * @dev Generate an OTP and store it in the contract.
-   * @param request The OTPRequest struct containing the request details.
-   * @param signature The EIP-712-compliant signature of the request.
-   */
-  function requestOtp(
-    OTPRequest memory request,
+   * @dev Registers a new user by storing their OTP commitment.
+   * 
+   * This function is used to initialize a user's OTP authentication process by storing
+   * an initial commitment value (`y0 = H(x1)`). The commitment value is used to verify
+   * the validity of future OTPs.
+   * 
+   * The function ensures:
+   * - The provided `signature` is valid and was signed by the user.
+   * - The user is not already registered on the same service.
+   * - The OTP commitment is stored securely in the contract.
+   * 
+   * @param userId A unique identifier for the user, computed as `keccak256(username, service, address)`.
+   * @param userAddress The Ethereum address of the user registering.
+   * @param request The UserRegistration struct containing the request details.
+   * @param signature The EIP-712-compliant signature for the user registration.
+  */
+  function registerUser(
+    bytes32 userId,
+    address userAddress,
+    UserRegistration memory request,
     bytes memory signature
-  ) public notBlacklisted(request.userAddress) {
-    bytes32 hashedTransactionId = keccak256(bytes(request.transactionId));
-
-    // Ensure the transaction ID hasn't been processed before
-    require(!isUsed[hashedTransactionId], "Transaction ID already processed");
-
+  ) public notBlacklisted(userId) {
     require(
-      otpRecords[hashedTransactionId].expirationTime == 0,
-      "OTP already exists for this transaction ID"
+      verifySignature(request, signature, userAddress),
+      "Invalid signature for User Registration"
+    );
+    require(
+      otpRecords[userId].commitmentValue == 0,
+      "User already registered on this service"
     );
 
-    require(request.expirationTime >= block.timestamp, "OTP has expired");
+    otpRecords[userId] = OTPData(request.commitmentValue, userAddress, 1);
 
-    // Verify the signature for the OTP request
-    require(
-      verifySignature(request, signature, request.userAddress),
-      "Invalid signature"
-    );
-
-    // Store the OTP request
-    otpRecords[hashedTransactionId] = request;
-
-    // Emit an event for OTP generation
-    emit OtpRequested(hashedTransactionId, request.userAddress);
+    emit UserRegistered(userId, userAddress);
   }
 
   /**
-   * @dev Verify the OTP by comparing the provided OTP with the stored OTP.
-   * @param transactionId The unique transaction ID associated with this OTP.
-   * @param otp The plain text OTP provided by the user.
+   * @dev Verify the OTP.
+   * 
+   * @param userId The unique user ID associated with this OTP.
+   * @param request A OTPVerification struct.
    * @param signature The EIP-712-compliant signature for the OTP verification.
+   * 
    * @return success Boolean indicating whether the verification was successful.
    */
   function verifyOtp(
-    string memory transactionId,
-    string memory otp,
+    bytes32 userId,
+    OTPVerification memory request,
     bytes memory signature
   ) public returns (bool success) {
-    bytes32 hashedTransactionId = keccak256(bytes(transactionId));
-    OTPRequest storage otpRequest = otpRecords[hashedTransactionId];
+    OTPData storage otpData = otpRecords[userId];
 
-    // Check if the OTP is valid
-    require(otpRequest.expirationTime >= block.timestamp, "OTP has expired");
-    require(!isUsed[hashedTransactionId], "OTP has already been used");
-
-    // Recreate the OTPVerification struct
-    OTPVerification memory verification = OTPVerification({
-      transactionId: transactionId,
-      otp: otp,
-      userAddress: otpRequest.userAddress
-    });
-
-    // Verify the signature for OTP verification
     require(
-      verifySignature(verification, signature, otpRequest.userAddress),
+      verifySignature(request, signature, otpData.userAddress),
       "Invalid signature for OTP verification"
     );
 
-    // Mark the OTP as used
-    isUsed[hashedTransactionId] = true;
+    // 🔹 Ensure that hashed OTP matches the stored commitment
+    require(
+      keccak256(abi.encodePacked(request.otp)) == otpData.commitmentValue,
+      "OTP is invalid"
+    );
 
-    // Emit an event for successful verification
-    emit OtpVerified(hashedTransactionId, otpRequest.userAddress, true);
+    // 🔹 Update commitment to prevent OTP reuse
+    otpData.commitmentValue = request.newCommitmentValue;
+    otpData.index++;
 
+    emit OtpVerified(userId, otpData.userAddress, true);
     return true;
   }
 
-  function resetOtp(bytes32 transactionId) public onlyRole(ADMIN_ROLE) {
-    require(
-      otpRecords[transactionId].expirationTime < block.timestamp,
-      "OTP is still valid"
-    );
-    delete otpRecords[transactionId];
+  function resetOtp(bytes32 userId) public onlyRole(ADMIN_ROLE) {
+    delete otpRecords[userId];
   }
 
-  function blacklistUser(address user) public onlyRole(ADMIN_ROLE) {
-    blacklisted[user] = true;
-    emit UserBlacklisted(user);
+  function blacklistUser(bytes32 userId) public onlyRole(ADMIN_ROLE) {
+    blacklisted[userId] = true;
+    emit UserBlacklisted(userId);
   }
 
-  function removeUserFromBlacklist(address user) public onlyRole(ADMIN_ROLE) {
-    blacklisted[user] = false;
-    emit UserRemovedFromBlacklist(user);
+  function removeUserFromBlacklist(bytes32 userId) public onlyRole(ADMIN_ROLE) {
+    blacklisted[userId] = false;
+    emit UserRemovedFromBlacklist(userId);
   }
 
   /**
-   * @dev Check if the OTP request is valid (not expired and not used).
-   * @param transactionId The unique transaction ID.
-   * @return valid Boolean indicating the validity of the OTP.
-   */
-  function isOtpValid(bytes32 transactionId) public view returns (bool valid) {
-    OTPRequest storage otp = otpRecords[transactionId];
-    return (otp.expirationTime >= block.timestamp && !isUsed[transactionId]);
-  }
-
-  /**
-   * @dev Verifies the EIP-712 signature for OTPRequest.
-   * @param request The OTPRequest struct containing the data.
+   * @dev Verifies the EIP-712 signature for UserRegistration.
+   * @param request The UserRegistration struct containing the data.
    * @param signature The EIP-712-compliant signature.
    * @param expectedSigner The expected signer of the request.
    * @return Boolean indicating whether the signature is valid.
    */
   function verifySignature(
-    OTPRequest memory request,
+    UserRegistration memory request,
     bytes memory signature,
     address expectedSigner
   ) public view returns (bool) {
-    bytes32 digest = hashOtpRequest(request);
+    bytes32 digest = hashUserRegistration(request);
     address signer = ECDSA.recover(digest, signature);
     return signer == expectedSigner;
   }

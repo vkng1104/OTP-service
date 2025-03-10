@@ -1,22 +1,20 @@
 import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { expect } from "chai";
-import { ethers } from "ethers";
-import hre from "hardhat";
+import { ethers } from "hardhat";
 
 describe("OTPSystem", function () {
   async function deployOtpSystemFixture() {
-    // Get signers
-    const [owner, admin, user, other] = await hre.ethers.getSigners();
+    const [owner, admin, user, attacker] = await ethers.getSigners();
 
-    // Deploy the contract
-    const OTPSystem = await hre.ethers.getContractFactory("OTPSystem");
+    // Deploy the OTPSystem contract
+    const OTPSystem = await ethers.getContractFactory("OTPSystem");
     const otpSystem = await OTPSystem.deploy();
 
     // Assign ADMIN_ROLE to admin
     const ADMIN_ROLE = ethers.keccak256(ethers.toUtf8Bytes("ADMIN_ROLE"));
     await otpSystem.connect(owner).grantRole(ADMIN_ROLE, admin.address);
 
-    return { otpSystem, owner, admin, user, other, ADMIN_ROLE };
+    return { otpSystem, owner, admin, user, attacker, ADMIN_ROLE };
   }
 
   describe("Deployment", function () {
@@ -33,339 +31,448 @@ describe("OTPSystem", function () {
     });
   });
 
-  describe("OTP Functionality", function () {
-    it("Should request OTP successfully with valid signature", async function () {
+  /**
+   * Helper function to generate a signature for UserRegistration.
+   */
+  async function signUserRegistration(
+    otpSystem,
+    user,
+    username,
+    service,
+    commitmentValue,
+  ) {
+    const domain = {
+      name: "OTPSystem",
+      version: "1",
+      chainId: 31337,
+      verifyingContract: otpSystem.target as string,
+    };
+
+    const types = {
+      UserRegistration: [
+        { name: "username", type: "string" },
+        { name: "service", type: "string" },
+        { name: "commitmentValue", type: "bytes32" },
+      ],
+    };
+
+    const value = {
+      username,
+      service,
+      commitmentValue,
+    };
+
+    return await user.signTypedData(domain, types, value);
+  }
+
+  /**
+   * Helper function to generate a signature for OTPVerification.
+   */
+  async function signOtpVerification(
+    otpSystem,
+    user,
+    username,
+    service,
+    otp,
+    newCommitmentValue,
+  ) {
+    const domain = {
+      name: "OTPSystem",
+      version: "1",
+      chainId: 31337,
+      verifyingContract: otpSystem.target as string,
+    };
+
+    const types = {
+      OTPVerification: [
+        { name: "username", type: "string" },
+        { name: "service", type: "string" },
+        { name: "otp", type: "bytes32" },
+        { name: "newCommitmentValue", type: "bytes32" },
+      ],
+    };
+
+    const value = {
+      username,
+      service,
+      otp,
+      newCommitmentValue,
+    };
+
+    return await user.signTypedData(domain, types, value);
+  }
+
+  describe("User Registration", function () {
+    it("Should allow a user to register successfully", async function () {
       const { otpSystem, user } = await loadFixture(deployOtpSystemFixture);
-
-      const expirationTime = Math.floor(Date.now() / 1000) + 3600;
-
-      const request = {
-        transactionId: "transaction123",
-        otp: "123456",
-        userAddress: user.address,
-        expirationTime,
-      };
-
-      const domain = {
-        name: "OTPSystem",
-        version: "1",
-        chainId: 31337,
-        verifyingContract: otpSystem.target as string,
-      };
-
-      const types = {
-        OTPRequest: [
-          { name: "transactionId", type: "string" },
-          { name: "otp", type: "string" },
-          { name: "userAddress", type: "address" },
-          { name: "expirationTime", type: "uint256" },
-        ],
-      };
-
-      const signature = await user.signTypedData(domain, types, request);
-
-      await expect(otpSystem.connect(user).requestOtp(request, signature))
-        .to.emit(otpSystem, "OtpRequested")
-        .withArgs(
-          ethers.keccak256(ethers.toUtf8Bytes(request.transactionId)),
-          user.address,
-        );
-
-      const hashedTransactionId = ethers.keccak256(
-        ethers.toUtf8Bytes(request.transactionId),
-      );
-      const storedOtp = await otpSystem.otpRecords(hashedTransactionId);
-
-      expect(storedOtp.userAddress).to.equal(user.address);
-      expect(storedOtp.expirationTime).to.equal(expirationTime);
-    });
-
-    it("Should verify OTP successfully", async function () {
-      const { otpSystem, user } = await loadFixture(deployOtpSystemFixture);
-
-      const expirationTime = Math.floor(Date.now() / 1000) + 3600;
-
-      const request = {
-        transactionId: "transaction123",
-        otp: "123456",
-        userAddress: user.address,
-        expirationTime,
-      };
-
-      const domain = {
-        name: "OTPSystem",
-        version: "1",
-        chainId: 31337,
-        verifyingContract: otpSystem.target as string,
-      };
-
-      const types = {
-        OTPRequest: [
-          { name: "transactionId", type: "string" },
-          { name: "otp", type: "string" },
-          { name: "userAddress", type: "address" },
-          { name: "expirationTime", type: "uint256" },
-        ],
-      };
-
-      const signature = await user.signTypedData(domain, types, request);
-
-      await otpSystem.connect(user).requestOtp(request, signature);
-
-      const hashedTransactionId = ethers.keccak256(
-        ethers.toUtf8Bytes(request.transactionId),
+      const username = "alice";
+      const service = "email";
+      const commitmentValue = ethers.keccak256(
+        ethers.toUtf8Bytes("commitment1"),
       );
 
-      const verification = {
-        transactionId: request.transactionId,
-        otp: request.otp,
-        userAddress: request.userAddress,
-      };
-
-      const verificationTypes = {
-        OTPVerification: [
-          { name: "transactionId", type: "string" },
-          { name: "otp", type: "string" },
-          { name: "userAddress", type: "address" },
-        ],
-      };
-
-      const verificationSignature = await user.signTypedData(
-        domain,
-        verificationTypes,
-        verification,
+      const userId = ethers.keccak256(
+        ethers.toUtf8Bytes(username + service + user.address),
+      );
+      const signature = await signUserRegistration(
+        otpSystem,
+        user,
+        username,
+        service,
+        commitmentValue,
       );
 
       await expect(
         otpSystem
           .connect(user)
-          .verifyOtp(request.transactionId, request.otp, verificationSignature),
+          .registerUser(
+            userId,
+            user.address,
+            { username, service, commitmentValue },
+            signature,
+          ),
       )
-        .to.emit(otpSystem, "OtpVerified")
-        .withArgs(hashedTransactionId, user.address, true);
+        .to.emit(otpSystem, "UserRegistered")
+        .withArgs(userId, user.address);
 
-      expect(await otpSystem.isUsed(hashedTransactionId)).to.be.true;
+      const userData = await otpSystem.otpRecords(userId);
+      expect(userData.userAddress).to.equal(user.address);
+      expect(userData.commitmentValue).to.equal(commitmentValue);
     });
 
-    it("Should reject OTP verification for expired OTP", async function () {
+    it("Should not allow duplicate registration for the same service", async function () {
       const { otpSystem, user } = await loadFixture(deployOtpSystemFixture);
+      const username = "alice";
+      const service = "email";
+      const commitmentValue = ethers.keccak256(
+        ethers.toUtf8Bytes("commitment1"),
+      );
 
-      const expirationTime = Math.floor(Date.now() / 1000) - 1;
+      const userId = ethers.keccak256(
+        ethers.toUtf8Bytes(username + service + user.address),
+      );
+      const signature = await signUserRegistration(
+        otpSystem,
+        user,
+        username,
+        service,
+        commitmentValue,
+      );
 
-      const request = {
-        transactionId: "transaction123",
-        otp: "123456",
-        userAddress: user.address,
-        expirationTime,
-        nonce: 0,
-      };
-
-      const domain = {
-        name: "OTPSystem",
-        version: "1",
-        chainId: 31337,
-        verifyingContract: otpSystem.target as string,
-      };
-
-      const types = {
-        OTPRequest: [
-          { name: "transactionId", type: "string" },
-          { name: "otp", type: "string" },
-          { name: "userAddress", type: "address" },
-          { name: "expirationTime", type: "uint256" },
-          { name: "nonce", type: "uint256" },
-        ],
-      };
-
-      const signature = await user.signTypedData(domain, types, request);
+      await otpSystem
+        .connect(user)
+        .registerUser(
+          userId,
+          user.address,
+          { username, service, commitmentValue },
+          signature,
+        );
 
       await expect(
-        otpSystem.connect(user).requestOtp(request, signature),
-      ).to.be.revertedWith("OTP has expired");
+        otpSystem
+          .connect(user)
+          .registerUser(
+            userId,
+            user.address,
+            { username, service, commitmentValue },
+            signature,
+          ),
+      ).to.be.revertedWith("User already registered on this service");
     });
 
-    it("Should not allow requesting an OTP for the same request - prevent OTP replay attack", async function () {
-      const { otpSystem, user } = await loadFixture(deployOtpSystemFixture);
+    it("Should reject user registration with an invalid signature", async function () {
+      const { otpSystem, user, attacker } = await loadFixture(
+        deployOtpSystemFixture,
+      );
+      const username = "alice";
+      const service = "email";
+      const password = "securepassword";
+      const index = 1;
 
-      const expirationTime = Math.floor(Date.now() / 1000) + 3600;
+      // 🔹 Compute valid commitment for registration
+      const commitmentValue = ethers.keccak256(
+        ethers.toUtf8Bytes(username + password + index),
+      );
 
-      const request = {
-        transactionId: "transaction123",
-        otp: "123456",
-        userAddress: user.address,
-        expirationTime,
-      };
+      // 🔹 Generate the user ID (hash of username + service + address)
+      const userId = ethers.keccak256(
+        ethers.toUtf8Bytes(username + service + user.address),
+      );
 
-      const domain = {
-        name: "OTPSystem",
-        version: "1",
-        chainId: 31337,
-        verifyingContract: otpSystem.target as string,
-      };
+      // 🔹 Attacker (not the user) signs the registration request
+      const badSignature = await signUserRegistration(
+        otpSystem,
+        attacker, // 🔴 WRONG SIGNER (attacker)
+        username,
+        service,
+        commitmentValue,
+      );
 
-      const types = {
-        OTPRequest: [
-          { name: "transactionId", type: "string" },
-          { name: "otp", type: "string" },
-          { name: "userAddress", type: "address" },
-          { name: "expirationTime", type: "uint256" },
-        ],
-      };
-
-      const signature = await user.signTypedData(domain, types, request);
-
-      // Request OTP for the first time
-      await otpSystem.connect(user).requestOtp(request, signature);
-
-      // Attempt to request OTP with the same transactionId
+      // 🔹 Attempt to register the user with the invalid signature - should fail
       await expect(
-        otpSystem.connect(user).requestOtp(request, signature),
-      ).to.be.revertedWith("OTP already exists for this transaction ID");
-    });
-
-    it("Should return false for non-existent transactionId", async function () {
-      const { otpSystem } = await loadFixture(deployOtpSystemFixture);
-
-      const nonExistentTransactionId = ethers.id("non-existent");
-      const isValid = await otpSystem.isOtpValid(nonExistentTransactionId);
-      expect(isValid).to.be.false;
+        otpSystem
+          .connect(user)
+          .registerUser(
+            userId,
+            user.address,
+            { username, service, commitmentValue },
+            badSignature,
+          ),
+      ).to.be.revertedWith("Invalid signature for User Registration");
     });
   });
 
-  describe("Admin Functions", function () {
-    it("Should allow admin to blacklist users", async function () {
-      const { otpSystem, admin, user } = await loadFixture(
-        deployOtpSystemFixture,
+  describe("OTP Verification", function () {
+    it("Should verify OTP successfully", async function () {
+      const { otpSystem, user } = await loadFixture(deployOtpSystemFixture);
+      const username = "alice";
+      const service = "email";
+      const password = "securepassword"; // Simulating a password input
+      let index = 1;
+
+      // 🔹 Compute valid initial OTP and commitment
+      const otp = ethers.keccak256(
+        ethers.toUtf8Bytes(username + password + index),
+      );
+      const commitmentValue = ethers.keccak256(otp);
+
+      // 🔹 Compute the next OTP and new commitment for the next index
+      index += 1;
+      const nextOtp = ethers.keccak256(
+        ethers.toUtf8Bytes(username + password + index),
+      );
+      const newCommitmentValue = ethers.keccak256(nextOtp);
+
+      // 🔹 Generate the user ID (hash of username + service + address)
+      const userId = ethers.keccak256(
+        ethers.toUtf8Bytes(username + service + user.address),
       );
 
-      await expect(otpSystem.connect(admin).blacklistUser(user.address))
-        .to.emit(otpSystem, "UserBlacklisted")
-        .withArgs(user.address);
-
-      expect(await otpSystem.blacklisted(user.address)).to.be.true;
-    });
-
-    it("Should reject non-admin blacklist attempt", async function () {
-      const { otpSystem, user, other } = await loadFixture(
-        deployOtpSystemFixture,
+      // 🔹 Sign the registration request
+      const registrationSignature = await signUserRegistration(
+        otpSystem,
+        user,
+        username,
+        service,
+        commitmentValue,
       );
 
-      await expect(otpSystem.connect(other).blacklistUser(user.address)).to.be
-        .reverted;
-    });
+      // 🔹 Register the user with the initial OTP commitment
+      await otpSystem
+        .connect(user)
+        .registerUser(
+          userId,
+          user.address,
+          { username, service, commitmentValue },
+          registrationSignature,
+        );
 
-    it("Should allow admin to remove users from blacklist", async function () {
-      const { otpSystem, admin, user } = await loadFixture(
-        deployOtpSystemFixture,
+      // 🔹 Sign the OTP verification request
+      const verificationSignature = await signOtpVerification(
+        otpSystem,
+        user,
+        username,
+        service,
+        otp, // Correctly use the hashed OTP
+        newCommitmentValue,
       );
 
-      // Blacklist the user first
-      await otpSystem.connect(admin).blacklistUser(user.address);
-
-      // Remove the user from blacklist
+      // 🔹 Verify OTP - should pass
       await expect(
-        otpSystem.connect(admin).removeUserFromBlacklist(user.address),
+        otpSystem
+          .connect(user)
+          .verifyOtp(
+            userId,
+            { username, service, otp, newCommitmentValue },
+            verificationSignature,
+          ),
       )
-        .to.emit(otpSystem, "UserRemovedFromBlacklist")
-        .withArgs(user.address);
+        .to.emit(otpSystem, "OtpVerified")
+        .withArgs(userId, user.address, true);
 
-      expect(await otpSystem.blacklisted(user.address)).to.be.false;
+      // 🔹 Ensure the commitment is updated correctly
+      const updatedData = await otpSystem.otpRecords(userId);
+      expect(updatedData.commitmentValue).to.equal(newCommitmentValue);
     });
 
-    it("Should allow admin to reset expired OTPs", async function () {
-      const { otpSystem, admin, user } = await loadFixture(
-        deployOtpSystemFixture,
+    it("Should reject OTP verification with invalid OTP", async function () {
+      const { otpSystem, user } = await loadFixture(deployOtpSystemFixture);
+      const username = "alice";
+      const service = "email";
+      const password = "securepassword"; // Simulating a user password
+      let index = 1;
+
+      // 🔹 Compute valid initial OTP and commitment
+      const otp = ethers.keccak256(
+        ethers.toUtf8Bytes(username + password + index),
+      );
+      const commitmentValue = ethers.keccak256(otp);
+
+      // 🔹 Compute the next commitment (for next index)
+      index += 1;
+      const nextOtp = ethers.keccak256(
+        ethers.toUtf8Bytes(username + password + index),
+      );
+      const newCommitmentValue = ethers.keccak256(nextOtp);
+
+      // 🔹 Compute an invalid OTP (incorrect hash)
+      const invalidOtp = ethers.keccak256(
+        ethers.toUtf8Bytes(username + password + "wrong_index"),
       );
 
-      const expirationTime = Math.floor(Date.now() / 1000) + 5; // Expires in 5 seconds
-
-      const request = {
-        transactionId: "transaction123",
-        otp: "123456",
-        userAddress: user.address,
-        expirationTime,
-      };
-
-      const domain = {
-        name: "OTPSystem",
-        version: "1",
-        chainId: 31337,
-        verifyingContract: otpSystem.target as string,
-      };
-
-      const types = {
-        OTPRequest: [
-          { name: "transactionId", type: "string" },
-          { name: "otp", type: "string" },
-          { name: "userAddress", type: "address" },
-          { name: "expirationTime", type: "uint256" },
-        ],
-      };
-
-      const signature = await user.signTypedData(domain, types, request);
-
-      // Request OTP
-      await otpSystem.connect(user).requestOtp(request, signature);
-
-      // Wait for OTP to expire
-      await new Promise((resolve) => setTimeout(resolve, 6000)); // Wait 6 seconds
-
-      const hashedTransactionId = ethers.keccak256(
-        ethers.toUtf8Bytes(request.transactionId),
+      // 🔹 Generate the user ID (hash of username + service + address)
+      const userId = ethers.keccak256(
+        ethers.toUtf8Bytes(username + service + user.address),
       );
 
-      // Reset expired OTP
-      await expect(otpSystem.connect(admin).resetOtp(hashedTransactionId)).to
-        .not.be.reverted;
-
-      // Ensure OTP record is deleted
-      const otpRecord = await otpSystem.otpRecords(hashedTransactionId);
-      expect(otpRecord.transactionId).to.equal(""); // Should be cleared
-    });
-
-    it("Should allow admin to reset expired OTPs - failed since OTP is still valid", async function () {
-      const { otpSystem, admin, user } = await loadFixture(
-        deployOtpSystemFixture,
+      // 🔹 Sign the registration request
+      const registrationSignature = await signUserRegistration(
+        otpSystem,
+        user,
+        username,
+        service,
+        commitmentValue,
       );
 
-      const expirationTime = Math.floor(Date.now() / 1000) + 3600; // Expires in 1 hour
+      // 🔹 Register the user with the initial OTP commitment
+      await otpSystem
+        .connect(user)
+        .registerUser(
+          userId,
+          user.address,
+          { username, service, commitmentValue },
+          registrationSignature,
+        );
 
-      const request = {
-        transactionId: "transaction123",
-        otp: "123456",
-        userAddress: user.address,
-        expirationTime,
-      };
-
-      const domain = {
-        name: "OTPSystem",
-        version: "1",
-        chainId: 31337,
-        verifyingContract: otpSystem.target as string,
-      };
-
-      const types = {
-        OTPRequest: [
-          { name: "transactionId", type: "string" },
-          { name: "otp", type: "string" },
-          { name: "userAddress", type: "address" },
-          { name: "expirationTime", type: "uint256" },
-        ],
-      };
-
-      const signature = await user.signTypedData(domain, types, request);
-
-      // Request OTP
-      await otpSystem.connect(user).requestOtp(request, signature);
-
-      const hashedTransactionId = ethers.keccak256(
-        ethers.toUtf8Bytes(request.transactionId),
+      // 🔹 Sign the OTP verification request using an invalid OTP
+      const invalidVerificationSignature = await signOtpVerification(
+        otpSystem,
+        user,
+        username,
+        service,
+        invalidOtp, // 🔴 Using an incorrect OTP here
+        newCommitmentValue,
       );
 
-      // Attempt to reset valid OTP
+      // 🔹 Attempt to verify with an invalid OTP - should fail
       await expect(
-        otpSystem.connect(admin).resetOtp(hashedTransactionId),
-      ).to.be.revertedWith("OTP is still valid");
+        otpSystem
+          .connect(user)
+          .verifyOtp(
+            userId,
+            { username, service, otp: invalidOtp, newCommitmentValue },
+            invalidVerificationSignature,
+          ),
+      ).to.be.revertedWith("OTP is invalid");
+    });
+
+    it("Should reject OTP verification with an invalid signature", async function () {
+      const { otpSystem, user, attacker } = await loadFixture(
+        deployOtpSystemFixture,
+      );
+      const username = "alice";
+      const service = "email";
+      const password = "securepassword";
+      let index = 1;
+
+      // 🔹 Compute valid initial OTP and commitment
+      const otp = ethers.keccak256(
+        ethers.toUtf8Bytes(username + password + index),
+      );
+      const commitmentValue = ethers.keccak256(otp);
+
+      // 🔹 Compute the next OTP and new commitment for the next index
+      index += 1;
+      const nextOtp = ethers.keccak256(
+        ethers.toUtf8Bytes(username + password + index),
+      );
+      const newCommitmentValue = ethers.keccak256(nextOtp);
+
+      // 🔹 Generate the user ID (hash of username + service + address)
+      const userId = ethers.keccak256(
+        ethers.toUtf8Bytes(username + service + user.address),
+      );
+
+      // 🔹 Correct user signs the registration request
+      const registrationSignature = await signUserRegistration(
+        otpSystem,
+        user,
+        username,
+        service,
+        commitmentValue,
+      );
+
+      // 🔹 Register the user with the initial OTP commitment
+      await otpSystem
+        .connect(user)
+        .registerUser(
+          userId,
+          user.address,
+          { username, service, commitmentValue },
+          registrationSignature,
+        );
+
+      // 🔹 Attacker (not the user) signs the OTP verification request
+      const badSignature = await signOtpVerification(
+        otpSystem,
+        attacker, // 🔴 WRONG SIGNER (attacker)
+        username,
+        service,
+        otp,
+        newCommitmentValue,
+      );
+
+      // 🔹 Attempt to verify OTP with an invalid signature - should fail
+      await expect(
+        otpSystem
+          .connect(user)
+          .verifyOtp(
+            userId,
+            { username, service, otp, newCommitmentValue },
+            badSignature,
+          ),
+      ).to.be.revertedWith("Invalid signature for OTP verification");
+    });
+  });
+
+  describe("Blacklist Functionality", function () {
+    it("Should allow an admin to blacklist a user", async function () {
+      const { otpSystem, admin, user } = await loadFixture(
+        deployOtpSystemFixture,
+      );
+      const userId = ethers.keccak256(
+        ethers.toUtf8Bytes("aliceemail" + user.address),
+      );
+
+      await expect(otpSystem.connect(admin).blacklistUser(userId))
+        .to.emit(otpSystem, "UserBlacklisted")
+        .withArgs(userId);
+
+      expect(await otpSystem.blacklisted(userId)).to.be.true;
+    });
+
+    it("Should prevent a blacklisted user from registering", async function () {
+      const { otpSystem, admin, user } = await loadFixture(
+        deployOtpSystemFixture,
+      );
+      const userId = ethers.keccak256(
+        ethers.toUtf8Bytes("aliceemail" + user.address),
+      );
+
+      await otpSystem.connect(admin).blacklistUser(userId);
+
+      await expect(
+        otpSystem.connect(user).registerUser(
+          userId,
+          user.address,
+          {
+            username: "alice",
+            service: "email",
+            commitmentValue: ethers.id("commitment"),
+          },
+          "0x",
+        ),
+      ).to.be.revertedWith("User is blacklisted");
     });
   });
 });

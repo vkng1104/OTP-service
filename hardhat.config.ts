@@ -1,9 +1,10 @@
-import { HardhatUserConfig } from "hardhat/config";
-import "@nomicfoundation/hardhat-toolbox";
 import dotenv from "dotenv";
+import { HardhatUserConfig } from "hardhat/config";
+
+import "@nomicfoundation/hardhat-toolbox";
 dotenv.config();
 
-const privateKey = process.env.PRIVATE_KEY
+const privateKey = process.env.PRIVATE_KEY;
 if (privateKey === undefined) {
   throw new Error("Environment variable MY_ENV_VAR is not set");
 }
@@ -20,7 +21,7 @@ const config: HardhatUserConfig = {
     sources: "./src/contracts",
     tests: "./src/test",
     cache: "./src/cache",
-    artifacts: "./src/artifacts"
+    artifacts: "./src/artifacts",
   },
 };
 
