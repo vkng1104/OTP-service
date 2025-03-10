@@ -432,6 +432,27 @@ describe("OTPSystem", function () {
             badSignature,
           ),
       ).to.be.revertedWith("Invalid signature for OTP verification");
+
+      // 🔹 Information in OTP verification request is wrong
+      const badSignatureUsername = await signOtpVerification(
+        otpSystem,
+        attacker, // 🔴 WRONG SIGNER (attacker)
+        "randomInvalidName",
+        service,
+        otp,
+        newCommitmentValue,
+      );
+
+      // 🔹 Attempt to verify OTP with an invalid signature - should fail
+      await expect(
+        otpSystem
+          .connect(user)
+          .verifyOtp(
+            userId,
+            { username, service, otp, newCommitmentValue },
+            badSignatureUsername,
+          ),
+      ).to.be.revertedWith("Invalid signature for OTP verification");
     });
   });
 
