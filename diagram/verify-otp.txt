@@ -1,0 +1,32 @@
+actor "End-user" as EndUser
+participant "Client" as ClientApp
+participant "Server" as ServerAPI
+participant "Web3 Wallet" as Web3Wallet
+participant "Smart Contract" as SmartContract
+participant "Blockchain Network" as BlockchainNetwork
+
+
+EndUser->ClientApp: Submit OTP
+ClientApp->Web3Wallet: Sign OTP Verification Request
+Web3Wallet-->ClientApp: Return Signed Request
+ClientApp->ServerAPI: Send OTP Verification Request and Signature
+ServerAPI->ServerAPI: Pre-validate Request (e.g., structure, format)
+ServerAPI->ServerAPI: Hash OTP
+ServerAPI->SmartContract: Call verifyOtp(transactionId, hashedOtp, signature)
+
+alt OTP Verification Success
+    SmartContract->BlockchainNetwork: Transaction created and executed on
+    SmartContract->SmartContract: Perform Condition Checks
+    SmartContract->SmartContract: Hash Submitted OTP
+    SmartContract->SmartContract: Compare Hashes
+    SmartContract->SmartContract: Emit OtpVerified Event
+    BlockchainNetwork-->SmartContract: Transaction Confirmed (Block Mined)
+    SmartContract-->ServerAPI: Verification Successful
+    ServerAPI-->ClientApp: Return Success Response
+    ClientApp-->EndUser: Notify User of Successful Verification
+else OTP Verification Fails
+    SmartContract->SmartContract: Verification Fails (Hash Mismatch or Checks Failed)
+    SmartContract-->ServerAPI: Return Failure Reason
+    ServerAPI-->ClientApp: Forward Error to Client
+    ClientApp-->EndUser: Notify User of Verification Failure
+end

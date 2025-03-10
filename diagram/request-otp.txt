@@ -1,0 +1,34 @@
+title OTP Request Workflow
+
+actor "End-user" as EndUser
+participant "Client" as ClientApp
+participant "Server" as ServerAPI
+participant "Web3 Wallet" as Web3Wallet
+participant "Smart Contract" as SmartContract
+participant "Blockchain Network" as BlockchainNetwork
+
+
+EndUser->ClientApp: Request OTP
+ClientApp->Web3Wallet: Request Signature for OTP Request
+Web3Wallet-->ClientApp: Return Signed OTP Request
+ClientApp->ServerAPI: Send OTP Request and Signature
+ServerAPI->ServerAPI: Pre-validate Request (e.g., timestamp, structure)
+ServerAPI->ServerAPI: Generate and Hash OTP
+ServerAPI->SmartContract: Call requestOtp(request, signature)
+alt OTP Request Success
+    SmartContract->BlockchainNetwork: Transaction created and executed on
+    SmartContract->SmartContract: Verify Signature
+    SmartContract->SmartContract: Check if OTP already exists
+    SmartContract->SmartContract: Check expiration time validity
+    SmartContract->SmartContract: Store OTP Record
+    SmartContract->SmartContract: Emit OtpRequested Event
+    BlockchainNetwork-->SmartContract: Transaction Confirmed (Block Mined)
+    SmartContract-->ServerAPI: Acknowledge OTP Storage
+    ServerAPI-->ClientApp: Return OTP and Success Response
+    ClientApp-->EndUser: Notify User of OTP Generation
+else OTP Request Fails
+    SmartContract->SmartContract: Check fails (e.g., invalid signature, duplicate transaction)
+    SmartContract-->ServerAPI: Return Failure Reason
+    ServerAPI-->ClientApp: Forward Error to Client
+    ClientApp-->EndUser: Notify User of Failure
+end
