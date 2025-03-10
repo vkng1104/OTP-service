@@ -1,0 +1,43 @@
+actor "End-user" as EndUser
+participant "Client" as ClientApp
+participant "Server" as ServerAPI
+participant "Internal Web App" as InternalApp
+participant "Web3 Wallet" as Web3Wallet
+participant "Smart Contract" as SmartContract
+participant "Blockchain Network" as BlockchainNetwork
+actor "Admin" as Admin
+
+EndUser->ClientApp: Send Multiple Requests
+ClientApp->ServerAPI: Forward Requests
+
+alt Excessive Requests Detected (Rate Limiting Triggered)
+    ServerAPI->ServerAPI: Detect Fraudulent Activity
+    ServerAPI->Admin: Notify Admin of Fraudulent Behavior (by Email)
+
+    Admin->InternalApp: Log into Internal Web App
+    InternalApp->ServerAPI: Request Audit Trails
+    ServerAPI-->InternalApp: Return Audit Trails
+
+    Admin->InternalApp: Submit Blacklist Request
+    InternalApp->Web3Wallet: Request Signature for Blacklist Request
+    Web3Wallet-->InternalApp: Return Signed Blacklist Request
+    InternalApp->ServerAPI: Send Signed Blacklist Request
+
+    ServerAPI->SmartContract: Call blacklistUser(userAddress, signature)
+
+    alt Blacklist Success
+    SmartContract->BlockchainNetwork: Transaction created and executed on
+        SmartContract->SmartContract: Store User in Blacklist
+        SmartContract->SmartContract: Emit UserBlacklisted Event
+        BlockchainNetwork-->SmartContract: Transaction Confirmed (Block Mined)
+        SmartContract-->ServerAPI: Blacklist Confirmed
+        ServerAPI-->InternalApp: Notify Admin of Blacklist Success
+        ServerAPI-->ClientApp: Notify Fraudulent Activity (User is blocked)
+    else Blacklist Failed
+        SmartContract->SmartContract: Revert Transaction (Failure Reason)
+        SmartContract-->ServerAPI: Return Failure Reason
+        ServerAPI-->InternalApp: Notify Admin of Blacklist Failure
+    end
+else No Fraud Detected
+    ServerAPI->ClientApp: Process Requests Normally
+end
