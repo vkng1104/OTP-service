@@ -39,6 +39,22 @@ Use the **Hardhat Ignition** module to deploy the contract locally:
 npx hardhat ignition deploy ./ignition/modules/OTPSystem.ts --network localhost
 ```
 
+### Step 4: Run docker and migrate sql scripts
+
+```bash
+docker-compose down -v
+
+docker-compose up -d
+```
+
+### Step 5: Run service
+
+```bash
+yarn build
+
+yarn start
+```
+
 ## Running Tests
 
 To test the OTP smart contract, execute the following command:
