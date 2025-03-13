@@ -1,4 +1,4 @@
-import { ErrorResponse } from "~/module-common/models";
+import { ErrorResponse } from "~/module-common/model/response/error-response.dto";
 
 import { TransactionRevertLog } from "../models/views/error";
 
