@@ -1,16 +1,9 @@
-import {
-  Column,
-  CreateDateColumn,
-  Entity,
-  PrimaryGeneratedColumn,
-  UpdateDateColumn,
-} from "typeorm";
+import { Column, Entity } from "typeorm";
+
+import { BaseEntity } from "~/module-common/entity/base.entity";
 
 @Entity({ name: "users" }) // Maps to "users" table
-export class UserEntity {
-  @PrimaryGeneratedColumn("uuid")
-  id: string;
-
+export class UserEntity extends BaseEntity {
   @Column({ type: "text", unique: true })
   username: string;
 
@@ -22,18 +15,6 @@ export class UserEntity {
 
   @Column({ type: "text" })
   status: string;
-
-  @CreateDateColumn({
-    type: "timestamp with time zone",
-    default: () => "CURRENT_TIMESTAMP",
-  })
-  created_at: Date;
-
-  @UpdateDateColumn({ type: "timestamp with time zone", nullable: true })
-  updated_at: Date;
-
-  @Column({ type: "timestamp with time zone", nullable: true })
-  deleted_at: Date;
 
   @Column({ type: "text", nullable: true })
   phone: string;

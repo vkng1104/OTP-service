@@ -1,6 +1,17 @@
-import { Body, Controller, Delete, Get, Param, Post } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  UsePipes,
+  ValidationPipe,
+} from "@nestjs/common";
 
 import { CreateUserRequest } from "~/module-user/model/request/create-user-request.dto";
+import { ListUsersRequest } from "~/module-user/model/request/list-users-request.dto";
+import { ListUsersResponse } from "~/module-user/model/response/list-users-response.dto";
 import { UserDto } from "~/module-user/model/user.dto";
 import { UserService } from "~/module-user/user.service";
 
@@ -17,11 +28,23 @@ export class UserController {
   }
 
   /**
-   * Retrieves all users
+   * Handles user listing with pagination and search.
+   * Accepts pagination parameters in the request body.
    */
-  @Get("list")
-  async getAllUsers(): Promise<UserDto[]> {
-    return await this.userService.findAllUsers();
+  @Post("list")
+  @UsePipes(new ValidationPipe({ transform: true })) // Enables validation
+  async listUsers(
+    @Body() request: ListUsersRequest,
+  ): Promise<ListUsersResponse> {
+    const list = await this.userService.findAllUsers(
+      request.limit(),
+      request.offset(),
+      request.search,
+    );
+    return {
+      data: list.data,
+      count: list.count,
+    };
   }
 
   /**
@@ -36,7 +59,7 @@ export class UserController {
    * Deletes a user by ID
    */
   @Delete(":id")
-  async deleteUser(@Param("id") id: string): Promise<number> {
+  async deleteUser(@Param("id") id: string): Promise<boolean> {
     return this.userService.deleteById(id);
   }
 }

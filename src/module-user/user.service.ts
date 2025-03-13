@@ -1,7 +1,9 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { plainToInstance } from "class-transformer";
-import { Repository } from "typeorm";
+import { IsNull, Repository } from "typeorm";
+
+import { PageableResponse } from "~/module-common/model/response/pageable-response.dto";
 
 import { UserEntity } from "./entity/user.entity";
 import { CreateUserRequest } from "./model/request/create-user-request.dto";
@@ -30,12 +32,35 @@ export class UserService {
   }
 
   /**
-   * Retrieves all users.
-   * @returns A Promise resolving to an array of UserDto objects.
+   * Retrieves a paginated list of users with optional username search filtering.
+   *
+   * @param limit The number of users to return per page (should be positive).
+   * @param offset The starting index for pagination (calculated as `page * size`).
+   * @param search (Optional) A search term to filter users by username (case-insensitive).
+   * @returns A Promise resolving to an array of `UserDto` objects.
    */
-  async findAllUsers(): Promise<UserDto[]> {
-    const users = await this.userRepository.find();
-    return users.map((user) => plainToInstance(UserDto, user));
+  async findAllUsers(
+    limit: number,
+    offset: number,
+    search?: string,
+  ): Promise<PageableResponse<UserDto>> {
+    const queryBuilder = this.userRepository
+      .createQueryBuilder("user")
+      .where("user.deleted_at IS NULL")
+      .take(limit)
+      .skip(offset);
+
+    if (search) {
+      queryBuilder.andWhere("user.username ILIKE :search", {
+        search: `%${search}%`, // Enables partial and case-insensitive search
+      });
+    }
+
+    const [users, total] = await queryBuilder.getManyAndCount();
+    return {
+      data: users.map((user) => plainToInstance(UserDto, user)),
+      count: total,
+    };
   }
 
   /**
@@ -45,7 +70,9 @@ export class UserService {
    * @throws NotFoundException if the user does not exist.
    */
   async byId(id: string): Promise<UserDto> {
-    const user = await this.userRepository.findOne({ where: { id } });
+    const user = await this.userRepository.findOne({
+      where: { id, deleted_at: IsNull() },
+    });
     if (!user) {
       throw new NotFoundException(`User with ID ${id} not found`);
     }
@@ -55,10 +82,16 @@ export class UserService {
   /**
    * Deletes a user by ID.
    * @param id The UUID of the user.
-   * @returns A Promise resolving to the number of affected rows.
+   * @returns A Promise resolving boolean indicating if deletion is successful or not.
+   * @throws NotFoundException if the user does not exist.
    */
-  async deleteById(id: string): Promise<number> {
-    const result = await this.userRepository.delete(id);
-    return result.affected || 0;
+  async deleteById(id: string): Promise<boolean> {
+    const user = await this.byId(id);
+
+    const deletedUser = await this.userRepository.update(user.id, {
+      deleted_at: new Date(),
+    });
+
+    return (deletedUser.affected || 0) > 0;
   }
 }
