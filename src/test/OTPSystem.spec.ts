@@ -127,7 +127,6 @@ describe("OTPSystem", function () {
           .connect(user)
           .registerUser(
             userId,
-            user.address,
             { username, service, commitmentValue },
             signature,
           ),
@@ -163,7 +162,6 @@ describe("OTPSystem", function () {
         .connect(user)
         .registerUser(
           userId,
-          user.address,
           { username, service, commitmentValue },
           signature,
         );
@@ -173,7 +171,6 @@ describe("OTPSystem", function () {
           .connect(user)
           .registerUser(
             userId,
-            user.address,
             { username, service, commitmentValue },
             signature,
           ),
@@ -214,7 +211,6 @@ describe("OTPSystem", function () {
           .connect(user)
           .registerUser(
             userId,
-            user.address,
             { username, service, commitmentValue },
             badSignature,
           ),
@@ -262,7 +258,6 @@ describe("OTPSystem", function () {
         .connect(user)
         .registerUser(
           userId,
-          user.address,
           { username, service, commitmentValue },
           registrationSignature,
         );
@@ -339,7 +334,6 @@ describe("OTPSystem", function () {
         .connect(user)
         .registerUser(
           userId,
-          user.address,
           { username, service, commitmentValue },
           registrationSignature,
         );
@@ -407,7 +401,6 @@ describe("OTPSystem", function () {
         .connect(user)
         .registerUser(
           userId,
-          user.address,
           { username, service, commitmentValue },
           registrationSignature,
         );
@@ -485,7 +478,6 @@ describe("OTPSystem", function () {
       await expect(
         otpSystem.connect(user).registerUser(
           userId,
-          user.address,
           {
             username: "alice",
             service: "email",

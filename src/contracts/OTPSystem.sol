@@ -64,7 +64,7 @@ contract OTPSystem is EIP712, AccessControl {
 
   /**
    * @dev Hashes the UserRegistration struct as per EIP-712 standard.
-   * 
+   *
    * @param request The UserRegistration struct.
    * @return The hashed UserRegistration.
    */
@@ -86,7 +86,7 @@ contract OTPSystem is EIP712, AccessControl {
 
   /**
    * @dev Hashes the OTPVerification struct as per EIP-712 standard.
-   * 
+   *
    * @param verification The OTPVerification struct.
    * @return The hashed OTPVerification.
    */
@@ -109,29 +109,27 @@ contract OTPSystem is EIP712, AccessControl {
 
   /**
    * @dev Registers a new user by storing their OTP commitment.
-   * 
-   * This function is used to initialize a user's OTP authentication process by storing
+   *
+   * This function initializes a user's OTP authentication process by storing
    * an initial commitment value (`y0 = H(x1)`). The commitment value is used to verify
    * the validity of future OTPs.
-   * 
+   *
    * The function ensures:
-   * - The provided `signature` is valid and was signed by the user.
+   * - The provided `signature` is valid and was signed by `msg.sender`.
    * - The user is not already registered on the same service.
    * - The OTP commitment is stored securely in the contract.
-   * 
-   * @param userId A unique identifier for the user, computed as `keccak256(username, service, address)`.
-   * @param userAddress The Ethereum address of the user registering.
+   *
+   * @param userId A unique identifier for the user, computed as `keccak256(username, service, msg.sender)`.
    * @param request The UserRegistration struct containing the request details.
    * @param signature The EIP-712-compliant signature for the user registration.
-  */
+   */
   function registerUser(
     bytes32 userId,
-    address userAddress,
     UserRegistration memory request,
     bytes memory signature
   ) public notBlacklisted(userId) {
     require(
-      verifySignature(request, signature, userAddress),
+      verifySignature(request, signature, msg.sender),
       "Invalid signature for User Registration"
     );
     require(
@@ -139,18 +137,18 @@ contract OTPSystem is EIP712, AccessControl {
       "User already registered on this service"
     );
 
-    otpRecords[userId] = OTPData(request.commitmentValue, userAddress, 1);
+    otpRecords[userId] = OTPData(request.commitmentValue, msg.sender, 1);
 
-    emit UserRegistered(userId, userAddress);
+    emit UserRegistered(userId, msg.sender);
   }
 
   /**
    * @dev Verify the OTP.
-   * 
+   *
    * @param userId The unique user ID associated with this OTP.
    * @param request A OTPVerification struct.
    * @param signature The EIP-712-compliant signature for the OTP verification.
-   * 
+   *
    * @return success Boolean indicating whether the verification was successful.
    */
   function verifyOtp(
