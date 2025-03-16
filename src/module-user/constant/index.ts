@@ -1,7 +1,7 @@
 // Define Enums for `authentication_type`, `role`, and `status`
 export enum AuthenticationType {
   PASSWORD = "password",
-  OAUTH = "oauth",
+  EXTERNAL_WALLET = "external_wallet",
   BIOMETRIC = "biometric",
 }
 

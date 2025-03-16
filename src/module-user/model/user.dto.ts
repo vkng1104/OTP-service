@@ -16,9 +16,19 @@ export class UserDto {
   @IsString()
   username: string;
 
+  // 🔹 Active authentication provider details
+  @Expose()
+  @IsUUID()
+  active_auth_provider_id: string;
+
   @Expose()
   @IsEnum(AuthenticationType)
-  authentication_type: AuthenticationType;
+  active_auth_provider?: AuthenticationType;
+
+  // 🔹 Public key from the user keys table
+  @Expose()
+  @IsOptional()
+  public_key?: string;
 
   @Expose()
   @IsEnum(UserRole)

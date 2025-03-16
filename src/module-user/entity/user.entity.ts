@@ -7,8 +7,8 @@ export class UserEntity extends BaseEntity {
   @Column({ type: "text", unique: true })
   username: string;
 
-  @Column({ type: "text" })
-  authentication_type: string;
+  @Column({ type: "text", nullable: true })
+  active_auth_provider_id: string;
 
   @Column({ type: "text" })
   role: string;
