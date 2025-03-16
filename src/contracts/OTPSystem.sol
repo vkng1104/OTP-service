@@ -9,9 +9,9 @@ contract OTPSystem is EIP712, AccessControl {
   string private constant SIGNING_DOMAIN = "OTPSystem";
   string private constant SIGNATURE_VERSION = "1";
 
+  // Structure to store OTP data
   struct OTPData {
     bytes32 commitmentValue; // Stores hashed OTP
-    address userAddress;
     uint256 index; // Tracks OTP usage order
   }
 
@@ -42,14 +42,23 @@ contract OTPSystem is EIP712, AccessControl {
   // Role identifiers
   bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
 
+  // Mapping to store OTP records by user ID
   mapping(bytes32 => OTPData) public otpRecords;
+  // To track whether user is blacklisted
   mapping(bytes32 => bool) public blacklisted;
 
   // Event triggered when a user is registered
   event UserRegistered(bytes32 indexed userId, address indexed user);
   // Event triggered when an OTP is verified
-  event OtpVerified(bytes32 indexed userId, address indexed user, bool success);
+  event OtpVerified(
+    bytes32 indexed userId,
+    address indexed user,
+    bytes32 otp,
+    bool success
+  );
+  // Event triggered when user is blacklisted
   event UserBlacklisted(bytes32 indexed userId);
+  // Event triggered when user is removed from blacklist
   event UserRemovedFromBlacklist(bytes32 indexed userId);
 
   constructor() EIP712(SIGNING_DOMAIN, SIGNATURE_VERSION) {
@@ -119,7 +128,7 @@ contract OTPSystem is EIP712, AccessControl {
    * - The user is not already registered on the same service.
    * - The OTP commitment is stored securely in the contract.
    *
-   * @param userId A unique identifier for the user, computed as `keccak256(username, service, msg.sender)`.
+   * @param userId A unique identifier for the user.
    * @param request The UserRegistration struct containing the request details.
    * @param signature The EIP-712-compliant signature for the user registration.
    */
@@ -137,7 +146,7 @@ contract OTPSystem is EIP712, AccessControl {
       "User already registered on this service"
     );
 
-    otpRecords[userId] = OTPData(request.commitmentValue, msg.sender, 1);
+    otpRecords[userId] = OTPData(request.commitmentValue, 1);
 
     emit UserRegistered(userId, msg.sender);
   }
@@ -153,15 +162,13 @@ contract OTPSystem is EIP712, AccessControl {
    */
   function verifyOtp(
     bytes32 userId,
+    uint256 index,
     OTPVerification memory request,
     bytes memory signature
   ) public returns (bool success) {
     OTPData storage otpData = otpRecords[userId];
 
-    require(
-      verifySignature(request, signature, otpData.userAddress),
-      "Invalid signature for OTP verification"
-    );
+    require(otpData.index == index, "Invalid index");
 
     // 🔹 Ensure that hashed OTP matches the stored commitment
     require(
@@ -169,11 +176,16 @@ contract OTPSystem is EIP712, AccessControl {
       "OTP is invalid"
     );
 
+    require(
+      verifySignature(request, signature, msg.sender),
+      "Invalid signature for OTP verification"
+    );
+
     // 🔹 Update commitment to prevent OTP reuse
     otpData.commitmentValue = request.newCommitmentValue;
     otpData.index++;
 
-    emit OtpVerified(userId, otpData.userAddress, true);
+    emit OtpVerified(userId, msg.sender, request.otp, true);
     return true;
   }
 

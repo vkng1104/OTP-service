@@ -135,7 +135,6 @@ describe("OTPSystem", function () {
         .withArgs(userId, user.address);
 
       const userData = await otpSystem.otpRecords(userId);
-      expect(userData.userAddress).to.equal(user.address);
       expect(userData.commitmentValue).to.equal(commitmentValue);
     });
 
@@ -278,19 +277,62 @@ describe("OTPSystem", function () {
           .connect(user)
           .verifyOtp(
             userId,
+            index - 1,
             { username, service, otp, newCommitmentValue },
             verificationSignature,
           ),
       )
         .to.emit(otpSystem, "OtpVerified")
-        .withArgs(userId, user.address, true);
+        .withArgs(userId, user.address, otp, true);
 
       // 🔹 Ensure the commitment is updated correctly
       const updatedData = await otpSystem.otpRecords(userId);
       expect(updatedData.commitmentValue).to.equal(newCommitmentValue);
+
+      /************** FOR THE NEXT INDEX ***************/
+
+      // 🔹 Compute the second next OTP and second new commitment for the next index
+      index += 1;
+      const secondNextOtp = ethers.keccak256(
+        ethers.toUtf8Bytes(username + password + index),
+      );
+      const secondNewCommitmentValue = ethers.keccak256(secondNextOtp);
+
+      // 🔹 Sign the OTP verification request
+      const secondVerificationSignature = await signOtpVerification(
+        otpSystem,
+        user,
+        username,
+        service,
+        nextOtp, // Correctly use the hashed OTP
+        secondNewCommitmentValue,
+      );
+
+      // 🔹 Verify OTP - should pass
+      await expect(
+        otpSystem.connect(user).verifyOtp(
+          userId,
+          index - 1,
+          {
+            username,
+            service,
+            otp: nextOtp,
+            newCommitmentValue: secondNewCommitmentValue,
+          },
+          secondVerificationSignature,
+        ),
+      )
+        .to.emit(otpSystem, "OtpVerified")
+        .withArgs(userId, user.address, nextOtp, true);
+
+      // 🔹 Ensure the commitment is updated correctly
+      const secondUpdatedData = await otpSystem.otpRecords(userId);
+      expect(secondUpdatedData.commitmentValue).to.equal(
+        secondNewCommitmentValue,
+      );
     });
 
-    it("Should reject OTP verification with invalid OTP", async function () {
+    it("Should reject OTP verification with bad request", async function () {
       const { otpSystem, user } = await loadFixture(deployOtpSystemFixture);
       const username = "alice";
       const service = "email";
@@ -338,15 +380,17 @@ describe("OTPSystem", function () {
           registrationSignature,
         );
 
-      // 🔹 Sign the OTP verification request using an invalid OTP
-      const invalidVerificationSignature = await signOtpVerification(
-        otpSystem,
-        user,
-        username,
-        service,
-        invalidOtp, // 🔴 Using an incorrect OTP here
-        newCommitmentValue,
-      );
+      // 🔹 Attempt to verify with an invalid index - should fail
+      await expect(
+        otpSystem
+          .connect(user)
+          .verifyOtp(
+            userId,
+            2,
+            { username, service, otp: invalidOtp, newCommitmentValue },
+            "0x",
+          ),
+      ).to.be.revertedWith("Invalid index");
 
       // 🔹 Attempt to verify with an invalid OTP - should fail
       await expect(
@@ -354,8 +398,9 @@ describe("OTPSystem", function () {
           .connect(user)
           .verifyOtp(
             userId,
+            1,
             { username, service, otp: invalidOtp, newCommitmentValue },
-            invalidVerificationSignature,
+            "0x",
           ),
       ).to.be.revertedWith("OTP is invalid");
     });
@@ -421,6 +466,7 @@ describe("OTPSystem", function () {
           .connect(user)
           .verifyOtp(
             userId,
+            1,
             { username, service, otp, newCommitmentValue },
             badSignature,
           ),
@@ -442,6 +488,7 @@ describe("OTPSystem", function () {
           .connect(user)
           .verifyOtp(
             userId,
+            1,
             { username, service, otp, newCommitmentValue },
             badSignatureUsername,
           ),
