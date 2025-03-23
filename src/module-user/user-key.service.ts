@@ -8,23 +8,23 @@ import { UserKeyEntity } from "./entity/user-key.entity";
 
 @Injectable()
 export class UserKeyService {
-  private secretKey = process.env.KEY_ENCRYPTION_SECRET || "my-secret-key"; // Use ENV for security
+  private secretKey: Buffer;
 
   constructor(
     @InjectRepository(UserKeyEntity)
     private readonly userKeyRepository: Repository<UserKeyEntity>,
-  ) {}
+  ) {
+    // Create a 32-byte key from the environment variable or default value
+    const rawKey = process.env.KEY_ENCRYPTION_SECRET || "my-secret-key";
+    this.secretKey = crypto.scryptSync(rawKey, "salt", 32);
+  }
 
   /**
    * Encrypts the private key using AES-256-CBC.
    */
   private encryptPrivateKey(privateKey: string): string {
     const iv = crypto.randomBytes(16); // Initialization vector
-    const cipher = crypto.createCipheriv(
-      "aes-256-cbc",
-      Buffer.from(this.secretKey),
-      iv,
-    );
+    const cipher = crypto.createCipheriv("aes-256-cbc", this.secretKey, iv);
     let encrypted = cipher.update(privateKey, "utf8", "hex");
     encrypted += cipher.final("hex");
     return iv.toString("hex") + ":" + encrypted; // Store IV + encrypted key
@@ -35,11 +35,7 @@ export class UserKeyService {
    */
   private encryptMnemonic(mnemonic: string): string {
     const iv = crypto.randomBytes(12); // 12 bytes for AES-GCM
-    const cipher = crypto.createCipheriv(
-      "aes-256-gcm",
-      Buffer.from(this.secretKey),
-      iv,
-    );
+    const cipher = crypto.createCipheriv("aes-256-gcm", this.secretKey, iv);
 
     let encrypted = cipher.update(mnemonic, "utf8", "hex");
     encrypted += cipher.final("hex");
@@ -89,11 +85,7 @@ export class UserKeyService {
   private decryptPrivateKey(encryptedPrivateKey: string): string {
     const [ivHex, encryptedText] = encryptedPrivateKey.split(":");
     const iv = Buffer.from(ivHex, "hex");
-    const decipher = crypto.createDecipheriv(
-      "aes-256-cbc",
-      Buffer.from(this.secretKey),
-      iv,
-    );
+    const decipher = crypto.createDecipheriv("aes-256-cbc", this.secretKey, iv);
     let decrypted = decipher.update(encryptedText, "hex", "utf8");
     decrypted += decipher.final("utf8");
     return decrypted;
@@ -107,11 +99,7 @@ export class UserKeyService {
     const iv = Buffer.from(ivHex, "hex");
     const authTag = Buffer.from(authTagHex, "hex");
 
-    const decipher = crypto.createDecipheriv(
-      "aes-256-gcm",
-      Buffer.from(this.secretKey),
-      iv,
-    );
+    const decipher = crypto.createDecipheriv("aes-256-gcm", this.secretKey, iv);
     decipher.setAuthTag(authTag); // Set authentication tag
 
     let decrypted = decipher.update(encryptedText, "hex", "utf8");
