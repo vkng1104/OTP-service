@@ -9,10 +9,12 @@ import {
   ValidationPipe,
 } from "@nestjs/common";
 
-import { CreateUserRequest } from "~/module-user/model/request/create-user-request.dto";
-import { ListUsersRequest } from "~/module-user/model/request/list-users-request.dto";
-import { ListUsersResponse } from "~/module-user/model/response/list-users-response.dto";
-import { UserDto } from "~/module-user/model/user.dto";
+import {
+  CreateUserRequest,
+  ListUsersRequest,
+  ListUsersResponse,
+  UserDto,
+} from "~/module-user/model";
 import { UserService } from "~/module-user/user.service";
 
 @Controller("api/user")

@@ -25,7 +25,11 @@ export class CreateUserRequest {
 
   @IsNotEmpty()
   @IsEnum(AuthenticationType, { message: "Invalid authentication type." })
-  authentication_type: AuthenticationType;
+  provider: AuthenticationType;
+
+  @IsOptional()
+  @IsString()
+  provider_id?: string;
 
   @IsNotEmpty()
   @IsEnum(UserRole, { message: "Invalid role type." })

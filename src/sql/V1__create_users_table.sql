@@ -5,20 +5,19 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TABLE public.users (
     id UUID DEFAULT public.uuid_generate_v4() NOT NULL,
     username TEXT NOT NULL,
-    authentication_type text NOT NULL,
-    role text NOT NULL,
-    status text NOT NULL,
+    role TEXT NOT NULL,
+    status TEXT NOT NULL,
 
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone,
-    deleted_at timestamp with time zone,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE,
+    deleted_at TIMESTAMP WITH TIME ZONE,
 
-    phone text,
-    email text,
-    platform text,
-    language text,
-    image_url text,
-    password_reset_key text,
-    first_name text,
-    last_name text
+    phone TEXT,
+    email TEXT,
+    platform TEXT,
+    language TEXT,
+    image_url TEXT,
+    password_reset_key TEXT,
+    first_name TEXT,
+    last_name TEXT
 );
