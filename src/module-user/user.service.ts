@@ -10,7 +10,7 @@ import { UserEntity } from "./entity/user.entity";
 import { CreateUserRequest } from "./model/request/create-user-request.dto";
 import { UserDto } from "./model/user.dto";
 import { UserKeyService } from "./user-key.service";
-
+import { UserOtpIndexCountService } from "./user-otp-index-count.service";
 interface RawUserResult {
   user_id: string;
   user_username: string;
@@ -42,6 +42,7 @@ export class UserService {
     private readonly userRepository: Repository<UserEntity>,
     private readonly authProviderService: AuthProviderService,
     private readonly userKeyService: UserKeyService,
+    private readonly userOtpIndexCountService: UserOtpIndexCountService,
   ) {}
 
   /**
@@ -59,6 +60,9 @@ export class UserService {
 
         // Generate and store the user's key
         await this.userKeyService.generateAndStoreKeys(user.id);
+
+        // Create user OTP index count
+        await this.userOtpIndexCountService.insert(user.id);
 
         // Create auth provider
         const authProvider = await this.authProviderService.upsertAuthProvider(
@@ -192,6 +196,15 @@ export class UserService {
         await transactionalEntityManager
           .createQueryBuilder()
           .update("user_keys")
+          .set({ deleted_at: new Date() })
+          .where("user_id = :userId", { userId: id })
+          .andWhere("deleted_at IS NULL")
+          .execute();
+
+        // soft delete user otp index count
+        await transactionalEntityManager
+          .createQueryBuilder()
+          .update("user_otp_index_counts")
           .set({ deleted_at: new Date() })
           .where("user_id = :userId", { userId: id })
           .andWhere("deleted_at IS NULL")

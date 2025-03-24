@@ -1,13 +1,11 @@
-export interface OtpResponse {
-  message: string;
-  transactionHash: string;
-  transactionId: string;
-  otp: string;
-}
+/* eslint-disable @typescript-eslint/no-empty-object-type */
 
-// Interface for the OTP verification response
-export interface OtpVerificationResponse {
+export interface UserRegistrationResponse extends BlockchainBaseResponse {}
+
+export interface OtpVerificationResponse extends BlockchainBaseResponse {}
+
+export interface BlockchainBaseResponse {
   success: boolean;
   message: string;
-  transactionHash?: string;
+  transactionHash: string;
 }

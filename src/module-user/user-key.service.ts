@@ -5,6 +5,7 @@ import { ethers } from "ethers";
 import { Repository } from "typeorm";
 
 import { UserKeyEntity } from "./entity/user-key.entity";
+import { KeyPair } from "./model";
 
 @Injectable()
 export class UserKeyService {
@@ -70,13 +71,16 @@ export class UserKeyService {
   /**
    * Retrieves the encrypted private key and decrypts it.
    */
-  async getDecryptedPrivateKey(userId: string): Promise<string> {
+  async getKeyPairs(userId: string): Promise<KeyPair> {
     const userKey = await this.userKeyRepository.findOne({
       where: { user_id: userId },
     });
     if (!userKey) throw new Error("Private key not found");
 
-    return this.decryptPrivateKey(userKey.encrypted_private_key);
+    return {
+      publicKey: userKey.public_key,
+      secretKey: this.decryptPrivateKey(userKey.encrypted_private_key),
+    };
   }
 
   /**

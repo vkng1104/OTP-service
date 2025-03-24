@@ -1,4 +1,10 @@
+import { ethers } from "ethers";
+
 export interface OtpView {
   otp: string;
-  expirationTime: number;
+}
+
+export interface SignerContractPair {
+  signer: ethers.Wallet;
+  contract: ethers.Contract;
 }

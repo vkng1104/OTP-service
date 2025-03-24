@@ -1,24 +1,24 @@
 import { Expose } from "class-transformer";
-import {
-  IsNotEmpty,
-  IsNumber,
-  IsOptional,
-  IsString,
-  Max,
-  Min,
-} from "class-validator";
+import { IsNotEmpty, IsNumber, IsString, Min } from "class-validator";
 
 export class OtpGeneratedRequest {
-  @IsOptional()
-  @IsNumber()
-  @Min(1)
-  @Max(10)
-  length?: number;
+  @IsString()
+  @IsNotEmpty()
+  user_id: string;
 
-  @IsOptional()
-  @IsNumber()
-  @Min(1)
-  duration?: number;
+  @IsString()
+  @IsNotEmpty()
+  provider_id: string;
+}
+
+export class OtpRegisterRequest {
+  @IsString()
+  @IsNotEmpty()
+  user_id: string;
+
+  @IsString()
+  @IsNotEmpty()
+  provider_id: string;
 }
 
 export class OtpRequestRequest {
