@@ -13,6 +13,8 @@ contract OTPSystem is EIP712, AccessControl {
   struct OTPData {
     bytes32 commitmentValue; // Stores hashed OTP
     uint256 index; // Tracks OTP usage order
+    uint256 startTime; // OTP valid-from timestamp
+    uint256 endTime; // OTP valid-until timestamp
   }
 
   struct UserRegistration {
@@ -146,9 +148,28 @@ contract OTPSystem is EIP712, AccessControl {
       "User already registered on this service"
     );
 
-    otpRecords[userId] = OTPData(request.commitmentValue, 1);
+    otpRecords[userId] = OTPData(request.commitmentValue, 1, 0, 0);
 
     emit UserRegistered(userId, msg.sender);
+  }
+
+  /**
+   * @dev Updates the OTP window for a user.
+   *
+   * @param userId The unique user ID associated with this OTP.
+   * @param startTime The start time of the OTP window.
+   * @param endTime The end time of the OTP window.
+   */
+  function updateOtpWindow(
+    bytes32 userId,
+    uint256 startTime,
+    uint256 endTime
+  ) public onlyRole(ADMIN_ROLE) {
+    require(otpRecords[userId].commitmentValue != 0, "User not registered");
+    require(startTime < endTime, "Invalid time window");
+
+    otpRecords[userId].startTime = startTime;
+    otpRecords[userId].endTime = endTime;
   }
 
   /**
@@ -170,6 +191,12 @@ contract OTPSystem is EIP712, AccessControl {
 
     require(otpData.index == index, "Invalid index");
 
+    require(
+      block.timestamp >= otpData.startTime &&
+        block.timestamp <= otpData.endTime,
+      "OTP is expired or not active"
+    );
+
     // 🔹 Ensure that hashed OTP matches the stored commitment
     require(
       keccak256(abi.encodePacked(request.otp)) == otpData.commitmentValue,
@@ -184,6 +211,9 @@ contract OTPSystem is EIP712, AccessControl {
     // 🔹 Update commitment to prevent OTP reuse
     otpData.commitmentValue = request.newCommitmentValue;
     otpData.index++;
+    // 🔐 Reset time window
+    otpData.startTime = 0;
+    otpData.endTime = 0;
 
     emit OtpVerified(userId, msg.sender, request.otp, true);
     return true;
