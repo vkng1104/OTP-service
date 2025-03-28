@@ -10,11 +10,22 @@ describe("OTPSystem", function () {
     const OTPSystem = await ethers.getContractFactory("OTPSystem");
     const otpSystem = await OTPSystem.deploy();
 
+    // Default admin role as specified in @openzeppelin/contracts/access/AccessControl.sol
+    const DEFAULT_ADMIN_ROLE = ethers.ZeroHash; // 0x00
+
     // Assign ADMIN_ROLE to admin
     const ADMIN_ROLE = ethers.keccak256(ethers.toUtf8Bytes("ADMIN_ROLE"));
     await otpSystem.connect(owner).grantRole(ADMIN_ROLE, admin.address);
 
-    return { otpSystem, owner, admin, user, attacker, ADMIN_ROLE };
+    return {
+      otpSystem,
+      owner,
+      admin,
+      user,
+      attacker,
+      ADMIN_ROLE,
+      DEFAULT_ADMIN_ROLE,
+    };
   }
 
   describe("Deployment", function () {
@@ -28,6 +39,14 @@ describe("OTPSystem", function () {
         deployOtpSystemFixture,
       );
       expect(await otpSystem.hasRole(ADMIN_ROLE, admin.address)).to.be.true;
+    });
+
+    it("Owner should have DEFAULT_ADMIN_ROLE and ADMIN_ROLE", async function () {
+      const { otpSystem, owner, DEFAULT_ADMIN_ROLE, ADMIN_ROLE } =
+        await loadFixture(deployOtpSystemFixture);
+      expect(await otpSystem.hasRole(DEFAULT_ADMIN_ROLE, owner.address)).to.be
+        .true;
+      expect(await otpSystem.hasRole(ADMIN_ROLE, owner.address)).to.be.true;
     });
   });
 
@@ -108,6 +127,28 @@ describe("OTPSystem", function () {
   */
   async function getCurrentTimestamp() {
     return await ethers.provider.getBlock("latest").then((b) => b.timestamp);
+  }
+
+  async function registerUserSuccessfully(
+    otpSystem,
+    user,
+    username,
+    service,
+    commitmentValue,
+  ) {
+    const userId = ethers.keccak256(
+      ethers.toUtf8Bytes(username + service + user.address),
+    );
+    const signature = await signUserRegistration(
+      otpSystem,
+      user,
+      username,
+      service,
+      commitmentValue,
+    );
+    await otpSystem
+      .connect(user)
+      .registerUser(userId, { username, service, commitmentValue }, signature);
   }
 
   describe("User Registration", function () {
@@ -253,23 +294,13 @@ describe("OTPSystem", function () {
         ethers.toUtf8Bytes(username + service + user.address),
       );
 
-      // 🔹 Sign the registration request
-      const registrationSignature = await signUserRegistration(
+      await registerUserSuccessfully(
         otpSystem,
         user,
         username,
         service,
         commitmentValue,
       );
-
-      // 🔹 Register the user with the initial OTP commitment
-      await otpSystem
-        .connect(user)
-        .registerUser(
-          userId,
-          { username, service, commitmentValue },
-          registrationSignature,
-        );
 
       // Set a valid window (now to now + 60s)
       let now = await getCurrentTimestamp();
@@ -382,23 +413,13 @@ describe("OTPSystem", function () {
         ethers.toUtf8Bytes(username + service + user.address),
       );
 
-      // 🔹 Sign the registration request
-      const registrationSignature = await signUserRegistration(
+      await registerUserSuccessfully(
         otpSystem,
         user,
         username,
         service,
         commitmentValue,
       );
-
-      // 🔹 Register the user with the initial OTP commitment
-      await otpSystem
-        .connect(user)
-        .registerUser(
-          userId,
-          { username, service, commitmentValue },
-          registrationSignature,
-        );
 
       // Set a valid window (now to now + 60s)
       const now = await getCurrentTimestamp();
@@ -456,23 +477,13 @@ describe("OTPSystem", function () {
         ethers.toUtf8Bytes(username + service + user.address),
       );
 
-      // 🔹 Correct user signs the registration request
-      const registrationSignature = await signUserRegistration(
+      await registerUserSuccessfully(
         otpSystem,
         user,
         username,
         service,
         commitmentValue,
       );
-
-      // 🔹 Register the user with the initial OTP commitment
-      await otpSystem
-        .connect(user)
-        .registerUser(
-          userId,
-          { username, service, commitmentValue },
-          registrationSignature,
-        );
 
       // Set a valid window (now to now + 60s)
       const now = await getCurrentTimestamp();
@@ -761,6 +772,93 @@ describe("OTPSystem", function () {
           "0x",
         ),
       ).to.be.revertedWith("User is blacklisted");
+    });
+  });
+
+  describe("Admin Utilities", function () {
+    it("Should allow admin to reset multiple OTP records", async function () {
+      const { otpSystem, admin, user } = await loadFixture(
+        deployOtpSystemFixture,
+      );
+      const commitment = ethers.keccak256(ethers.toUtf8Bytes("dummy"));
+
+      const userId1 = ethers.keccak256(
+        ethers.toUtf8Bytes("user1" + "email" + user.address),
+      );
+      const userId2 = ethers.keccak256(
+        ethers.toUtf8Bytes("user2" + "email" + user.address),
+      );
+
+      await registerUserSuccessfully(
+        otpSystem,
+        user,
+        "user1",
+        "email",
+        commitment,
+      );
+
+      await registerUserSuccessfully(
+        otpSystem,
+        user,
+        "user2",
+        "email",
+        commitment,
+      );
+
+      await otpSystem.connect(admin).updateOtpWindow(userId1, 1, 2); // just to set dummy values
+      await otpSystem.connect(admin).updateOtpWindow(userId2, 1, 2);
+
+      // Check before reset
+      expect(
+        (await otpSystem.otpRecords(userId1)).commitmentValue,
+      ).to.not.equal(ethers.ZeroHash);
+      expect(
+        (await otpSystem.otpRecords(userId2)).commitmentValue,
+      ).to.not.equal(ethers.ZeroHash);
+
+      // Reset both
+      await otpSystem.connect(admin).resetManyOtps([userId1, userId2]);
+
+      // Check after reset
+      expect((await otpSystem.otpRecords(userId1)).commitmentValue).to.equal(
+        ethers.ZeroHash,
+      );
+      expect((await otpSystem.otpRecords(userId2)).commitmentValue).to.equal(
+        ethers.ZeroHash,
+      );
+    });
+
+    it("Should allow admin to view OTP data", async function () {
+      const { otpSystem, admin, user } = await loadFixture(
+        deployOtpSystemFixture,
+      );
+      const commitment = ethers.keccak256(ethers.toUtf8Bytes("viewdata"));
+      const userId = ethers.keccak256(
+        ethers.toUtf8Bytes("viewUser" + "email" + user.address),
+      );
+
+      await registerUserSuccessfully(
+        otpSystem,
+        user,
+        "viewUser",
+        "email",
+        commitment,
+      );
+
+      await otpSystem.connect(admin).updateOtpWindow(userId, 1234, 4567);
+
+      const data = await otpSystem.connect(admin).viewOtpData(userId);
+
+      expect(data.commitmentValue).to.equal(commitment);
+      expect(data.startTime).to.equal(1234);
+      expect(data.endTime).to.equal(4567);
+    });
+
+    it("Should revert viewOtpData for non-admin", async function () {
+      const { otpSystem, user } = await loadFixture(deployOtpSystemFixture);
+      const userId = ethers.keccak256(ethers.toUtf8Bytes("unauthorized"));
+
+      await expect(otpSystem.connect(user).viewOtpData(userId)).to.be.reverted;
     });
   });
 });

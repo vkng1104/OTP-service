@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 
-contract OTPSystem is EIP712, AccessControl {
+contract OTPSystem is EIP712, AccessControl, ReentrancyGuard {
   string private constant SIGNING_DOMAIN = "OTPSystem";
   string private constant SIGNATURE_VERSION = "1";
 
@@ -66,6 +67,7 @@ contract OTPSystem is EIP712, AccessControl {
   constructor() EIP712(SIGNING_DOMAIN, SIGNATURE_VERSION) {
     // Grant the deployer the admin role
     _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+    _grantRole(ADMIN_ROLE, msg.sender);
   }
 
   modifier notBlacklisted(bytes32 userId) {
@@ -80,7 +82,7 @@ contract OTPSystem is EIP712, AccessControl {
    * @return The hashed UserRegistration.
    */
   function hashUserRegistration(
-    UserRegistration memory request
+    UserRegistration calldata request
   ) public view returns (bytes32) {
     return
       _hashTypedDataV4(
@@ -102,7 +104,7 @@ contract OTPSystem is EIP712, AccessControl {
    * @return The hashed OTPVerification.
    */
   function hashOtpVerification(
-    OTPVerification memory verification
+    OTPVerification calldata verification
   ) public view returns (bytes32) {
     return
       _hashTypedDataV4(
@@ -136,11 +138,11 @@ contract OTPSystem is EIP712, AccessControl {
    */
   function registerUser(
     bytes32 userId,
-    UserRegistration memory request,
-    bytes memory signature
-  ) public notBlacklisted(userId) {
+    UserRegistration calldata request,
+    bytes calldata signature
+  ) external notBlacklisted(userId) {
     require(
-      verifySignature(request, signature, msg.sender),
+      _verifyUserRegistration(request, signature, msg.sender),
       "Invalid signature for User Registration"
     );
     require(
@@ -164,7 +166,7 @@ contract OTPSystem is EIP712, AccessControl {
     bytes32 userId,
     uint256 startTime,
     uint256 endTime
-  ) public onlyRole(ADMIN_ROLE) {
+  ) external onlyRole(ADMIN_ROLE) {
     require(otpRecords[userId].commitmentValue != 0, "User not registered");
     require(startTime < endTime, "Invalid time window");
 
@@ -184,13 +186,12 @@ contract OTPSystem is EIP712, AccessControl {
   function verifyOtp(
     bytes32 userId,
     uint256 index,
-    OTPVerification memory request,
-    bytes memory signature
-  ) public returns (bool success) {
+    OTPVerification calldata request,
+    bytes calldata signature
+  ) external nonReentrant returns (bool success) {
     OTPData storage otpData = otpRecords[userId];
 
     require(otpData.index == index, "Invalid index");
-
     require(
       block.timestamp >= otpData.startTime &&
         block.timestamp <= otpData.endTime,
@@ -202,9 +203,8 @@ contract OTPSystem is EIP712, AccessControl {
       keccak256(abi.encodePacked(request.otp)) == otpData.commitmentValue,
       "OTP is invalid"
     );
-
     require(
-      verifySignature(request, signature, msg.sender),
+      _verifyOtpVerification(request, signature, msg.sender),
       "Invalid signature for OTP verification"
     );
 
@@ -219,16 +219,43 @@ contract OTPSystem is EIP712, AccessControl {
     return true;
   }
 
-  function resetOtp(bytes32 userId) public onlyRole(ADMIN_ROLE) {
+  function resetOtp(bytes32 userId) external onlyRole(ADMIN_ROLE) {
     delete otpRecords[userId];
   }
 
-  function blacklistUser(bytes32 userId) public onlyRole(ADMIN_ROLE) {
+  /**
+   * @dev Resets the OTP records for multiple users.
+   *
+   * @param userIds An array of user IDs to reset.
+   */
+  function resetManyOtps(
+    bytes32[] calldata userIds
+  ) external onlyRole(ADMIN_ROLE) {
+    for (uint i = 0; i < userIds.length; i++) {
+      delete otpRecords[userIds[i]];
+    }
+  }
+
+  /**
+   * @dev Retrieves the OTP data for a specific user.
+   *
+   * @param userId The unique user ID to retrieve OTP data for.
+   * @return The OTPData struct containing the user's OTP data.
+   */
+  function viewOtpData(
+    bytes32 userId
+  ) external view onlyRole(ADMIN_ROLE) returns (OTPData memory) {
+    return otpRecords[userId];
+  }
+
+  function blacklistUser(bytes32 userId) external onlyRole(ADMIN_ROLE) {
     blacklisted[userId] = true;
     emit UserBlacklisted(userId);
   }
 
-  function removeUserFromBlacklist(bytes32 userId) public onlyRole(ADMIN_ROLE) {
+  function removeUserFromBlacklist(
+    bytes32 userId
+  ) external onlyRole(ADMIN_ROLE) {
     blacklisted[userId] = false;
     emit UserRemovedFromBlacklist(userId);
   }
@@ -240,30 +267,28 @@ contract OTPSystem is EIP712, AccessControl {
    * @param expectedSigner The expected signer of the request.
    * @return Boolean indicating whether the signature is valid.
    */
-  function verifySignature(
-    UserRegistration memory request,
-    bytes memory signature,
+  function _verifyUserRegistration(
+    UserRegistration calldata request,
+    bytes calldata signature,
     address expectedSigner
-  ) public view returns (bool) {
+  ) internal view returns (bool) {
     bytes32 digest = hashUserRegistration(request);
-    address signer = ECDSA.recover(digest, signature);
-    return signer == expectedSigner;
+    return ECDSA.recover(digest, signature) == expectedSigner;
   }
 
   /**
    * @dev Verifies the EIP-712 signature for OTPVerification.
-   * @param verification The OTPVerification struct containing the data.
+   * @param request The OTPVerification struct containing the data.
    * @param signature The EIP-712-compliant signature.
    * @param expectedSigner The expected signer of the verification.
    * @return Boolean indicating whether the signature is valid.
    */
-  function verifySignature(
-    OTPVerification memory verification,
-    bytes memory signature,
+  function _verifyOtpVerification(
+    OTPVerification calldata request,
+    bytes calldata signature,
     address expectedSigner
-  ) public view returns (bool) {
-    bytes32 digest = hashOtpVerification(verification);
-    address signer = ECDSA.recover(digest, signature);
-    return signer == expectedSigner;
+  ) internal view returns (bool) {
+    bytes32 digest = hashOtpVerification(request);
+    return ECDSA.recover(digest, signature) == expectedSigner;
   }
 }
