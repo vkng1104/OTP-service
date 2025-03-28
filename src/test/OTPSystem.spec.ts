@@ -102,6 +102,14 @@ describe("OTPSystem", function () {
     return await user.signTypedData(domain, types, value);
   }
 
+  /* Get the current blockchain timestamp (not system time).
+  This ensures consistency with `block.timestamp` in Solidity, which is what the contract actually uses.
+  Avoid using `Date.now()` here because local system time may drift from the blockchain time in tests.
+  */
+  async function getCurrentTimestamp() {
+    return await ethers.provider.getBlock("latest").then((b) => b.timestamp);
+  }
+
   describe("User Registration", function () {
     it("Should allow a user to register successfully", async function () {
       const { otpSystem, user } = await loadFixture(deployOtpSystemFixture);
@@ -219,7 +227,9 @@ describe("OTPSystem", function () {
 
   describe("OTP Verification", function () {
     it("Should verify OTP successfully", async function () {
-      const { otpSystem, user } = await loadFixture(deployOtpSystemFixture);
+      const { otpSystem, user, admin } = await loadFixture(
+        deployOtpSystemFixture,
+      );
       const username = "alice";
       const service = "email";
       const password = "securepassword"; // Simulating a password input
@@ -261,6 +271,10 @@ describe("OTPSystem", function () {
           registrationSignature,
         );
 
+      // Set a valid window (now to now + 60s)
+      let now = await getCurrentTimestamp();
+      await otpSystem.connect(admin).updateOtpWindow(userId, now, now + 60);
+
       // 🔹 Sign the OTP verification request
       const verificationSignature = await signOtpVerification(
         otpSystem,
@@ -298,6 +312,10 @@ describe("OTPSystem", function () {
       );
       const secondNewCommitmentValue = ethers.keccak256(secondNextOtp);
 
+      // Set a valid window (now to now + 60s)
+      now = await getCurrentTimestamp();
+      await otpSystem.connect(admin).updateOtpWindow(userId, now, now + 60);
+
       // 🔹 Sign the OTP verification request
       const secondVerificationSignature = await signOtpVerification(
         otpSystem,
@@ -333,7 +351,9 @@ describe("OTPSystem", function () {
     });
 
     it("Should reject OTP verification with bad request", async function () {
-      const { otpSystem, user } = await loadFixture(deployOtpSystemFixture);
+      const { otpSystem, user, admin } = await loadFixture(
+        deployOtpSystemFixture,
+      );
       const username = "alice";
       const service = "email";
       const password = "securepassword"; // Simulating a user password
@@ -380,6 +400,10 @@ describe("OTPSystem", function () {
           registrationSignature,
         );
 
+      // Set a valid window (now to now + 60s)
+      const now = await getCurrentTimestamp();
+      await otpSystem.connect(admin).updateOtpWindow(userId, now, now + 60);
+
       // 🔹 Attempt to verify with an invalid index - should fail
       await expect(
         otpSystem
@@ -406,7 +430,7 @@ describe("OTPSystem", function () {
     });
 
     it("Should reject OTP verification with an invalid signature", async function () {
-      const { otpSystem, user, attacker } = await loadFixture(
+      const { otpSystem, user, attacker, admin } = await loadFixture(
         deployOtpSystemFixture,
       );
       const username = "alice";
@@ -449,6 +473,10 @@ describe("OTPSystem", function () {
           { username, service, commitmentValue },
           registrationSignature,
         );
+
+      // Set a valid window (now to now + 60s)
+      const now = await getCurrentTimestamp();
+      await otpSystem.connect(admin).updateOtpWindow(userId, now, now + 60);
 
       // 🔹 Attacker (not the user) signs the OTP verification request
       const badSignature = await signOtpVerification(
@@ -493,6 +521,206 @@ describe("OTPSystem", function () {
             badSignatureUsername,
           ),
       ).to.be.revertedWith("Invalid signature for OTP verification");
+    });
+
+    it("Should verify OTP within the valid time window", async function () {
+      const { otpSystem, admin, user } = await loadFixture(
+        deployOtpSystemFixture,
+      );
+      const username = "alice";
+      const service = "email";
+      const password = "securepassword";
+      let index = 1;
+
+      const otp = ethers.keccak256(
+        ethers.toUtf8Bytes(username + password + index),
+      );
+      const commitmentValue = ethers.keccak256(otp);
+
+      index += 1;
+      const nextOtp = ethers.keccak256(
+        ethers.toUtf8Bytes(username + password + index),
+      );
+      const newCommitmentValue = ethers.keccak256(nextOtp);
+
+      const userId = ethers.keccak256(
+        ethers.toUtf8Bytes(username + service + user.address),
+      );
+      const registrationSignature = await signUserRegistration(
+        otpSystem,
+        user,
+        username,
+        service,
+        commitmentValue,
+      );
+
+      await otpSystem
+        .connect(user)
+        .registerUser(
+          userId,
+          { username, service, commitmentValue },
+          registrationSignature,
+        );
+
+      // Set a valid window (now to now + 60s)
+      const now = await getCurrentTimestamp();
+      await otpSystem.connect(admin).updateOtpWindow(userId, now, now + 60);
+
+      const verificationSignature = await signOtpVerification(
+        otpSystem,
+        user,
+        username,
+        service,
+        otp,
+        newCommitmentValue,
+      );
+
+      await expect(
+        otpSystem
+          .connect(user)
+          .verifyOtp(
+            userId,
+            index - 1,
+            { username, service, otp, newCommitmentValue },
+            verificationSignature,
+          ),
+      )
+        .to.emit(otpSystem, "OtpVerified")
+        .withArgs(userId, user.address, otp, true);
+    });
+
+    it("Should reject OTP if verification is attempted before startTime", async function () {
+      const { otpSystem, admin, user } = await loadFixture(
+        deployOtpSystemFixture,
+      );
+      const username = "alice";
+      const service = "email";
+      const password = "securepassword";
+      let index = 1;
+
+      const otp = ethers.keccak256(
+        ethers.toUtf8Bytes(username + password + index),
+      );
+      const commitmentValue = ethers.keccak256(otp);
+
+      index += 1;
+      const nextOtp = ethers.keccak256(
+        ethers.toUtf8Bytes(username + password + index),
+      );
+      const newCommitmentValue = ethers.keccak256(nextOtp);
+
+      const userId = ethers.keccak256(
+        ethers.toUtf8Bytes(username + service + user.address),
+      );
+      const registrationSignature = await signUserRegistration(
+        otpSystem,
+        user,
+        username,
+        service,
+        commitmentValue,
+      );
+
+      await otpSystem
+        .connect(user)
+        .registerUser(
+          userId,
+          { username, service, commitmentValue },
+          registrationSignature,
+        );
+
+      // Set future window (starts in 60s)
+      const now = await getCurrentTimestamp();
+      await otpSystem
+        .connect(admin)
+        .updateOtpWindow(userId, now + 60, now + 120);
+
+      const verificationSignature = await signOtpVerification(
+        otpSystem,
+        user,
+        username,
+        service,
+        otp,
+        newCommitmentValue,
+      );
+
+      await expect(
+        otpSystem
+          .connect(user)
+          .verifyOtp(
+            userId,
+            index - 1,
+            { username, service, otp, newCommitmentValue },
+            verificationSignature,
+          ),
+      ).to.be.revertedWith("OTP is expired or not active");
+    });
+
+    it("Should reject OTP if verification is attempted after endTime", async function () {
+      const { otpSystem, admin, user } = await loadFixture(
+        deployOtpSystemFixture,
+      );
+      const username = "alice";
+      const service = "email";
+      const password = "securepassword";
+      let index = 1;
+
+      const otp = ethers.keccak256(
+        ethers.toUtf8Bytes(username + password + index),
+      );
+      const commitmentValue = ethers.keccak256(otp);
+
+      index += 1;
+      const nextOtp = ethers.keccak256(
+        ethers.toUtf8Bytes(username + password + index),
+      );
+      const newCommitmentValue = ethers.keccak256(nextOtp);
+
+      const userId = ethers.keccak256(
+        ethers.toUtf8Bytes(username + service + user.address),
+      );
+      const registrationSignature = await signUserRegistration(
+        otpSystem,
+        user,
+        username,
+        service,
+        commitmentValue,
+      );
+
+      await otpSystem
+        .connect(user)
+        .registerUser(
+          userId,
+          { username, service, commitmentValue },
+          registrationSignature,
+        );
+
+      // Set short-lived window: now to now + 2s
+      const now = await getCurrentTimestamp();
+      await otpSystem.connect(admin).updateOtpWindow(userId, now, now + 2);
+
+      const verificationSignature = await signOtpVerification(
+        otpSystem,
+        user,
+        username,
+        service,
+        otp,
+        newCommitmentValue,
+      );
+
+      // Wait until after expiry
+      await ethers.provider.send("evm_increaseTime", [3]);
+      await ethers.provider.send("evm_mine");
+
+      await expect(
+        otpSystem
+          .connect(user)
+          .verifyOtp(
+            userId,
+            index - 1,
+            { username, service, otp, newCommitmentValue },
+            verificationSignature,
+          ),
+      ).to.be.revertedWith("OTP is expired or not active");
     });
   });
 
