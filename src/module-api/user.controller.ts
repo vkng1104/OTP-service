@@ -9,6 +9,7 @@ import {
   ValidationPipe,
 } from "@nestjs/common";
 
+import { OtpService } from "~/module-otp/otp.service";
 import {
   CreateUserRequest,
   ListUsersRequest,
@@ -19,14 +20,24 @@ import { UserService } from "~/module-user/user.service";
 
 @Controller("api/user")
 export class UserController {
-  constructor(private readonly userService: UserService) {}
+  constructor(
+    private readonly userService: UserService,
+    private readonly otpService: OtpService,
+  ) {}
 
   /**
    * Creates a new user
    */
   @Post("create")
   async createUser(@Body() request: CreateUserRequest): Promise<UserDto> {
-    return await this.userService.createUser(request);
+    const user = await this.userService.createUser(request);
+
+    await this.otpService.registerUser({
+      user_id: user.id,
+      provider_id: request.provider_id,
+    });
+
+    return user;
   }
 
   /**

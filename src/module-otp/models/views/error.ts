@@ -1,4 +1,4 @@
-export interface TransactionRevertLog {
+export interface BlockchainTransactionRevertLog {
   code: string; // Error code (e.g., 'CALL_EXCEPTION')
   reason: string; // Reason for the revert (e.g., 'OTP has expired')
   transaction: {

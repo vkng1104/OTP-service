@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import {
+  HttpException,
+  HttpStatus,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { plainToInstance } from "class-transformer";
 import { Repository } from "typeorm";
@@ -8,6 +13,7 @@ import { PageableResponse } from "~/module-common/model/response/pageable-respon
 import { AuthProviderService } from "./auth-provider.service";
 import { UserEntity } from "./entity/user.entity";
 import { CreateUserRequest } from "./model/request/create-user-request.dto";
+import { SensitiveUserDetailDto } from "./model/sensitive-user-detail.dto";
 import { UserDto } from "./model/user.dto";
 import { UserKeyService } from "./user-key.service";
 import { UserOtpIndexCountService } from "./user-otp-index-count.service";
@@ -219,6 +225,27 @@ export class UserService {
     return true;
   }
 
+  async getSensitiveUserDetails(id: string): Promise<SensitiveUserDetailDto> {
+    const user = await this.byId(id);
+
+    if (!user) {
+      throw new HttpException("User not found", HttpStatus.NOT_FOUND);
+    }
+
+    const { secretKey: userSk } = await this.userKeyService.getKeyPairs(
+      user.id,
+    );
+
+    if (!userSk) {
+      throw new HttpException("User key not found", HttpStatus.NOT_FOUND);
+    }
+
+    return {
+      username: user.username,
+      public_key: user.public_key,
+      secret_key: userSk,
+    };
+  }
   /**
    * Helper function to retrieve user details with auth provider & public key.
    */

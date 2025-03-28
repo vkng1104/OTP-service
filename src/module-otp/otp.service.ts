@@ -4,7 +4,6 @@ import { ethers, TypedDataDomain } from "ethers";
 
 import OTPSystemJSON from "~/artifacts/src/contracts/OTPSystem.sol/OTPSystem.json"; // Import the ABI from the JSON file
 import { UserService } from "~/module-user/user.service";
-import { UserKeyService } from "~/module-user/user-key.service";
 import { UserOtpIndexCountService } from "~/module-user/user-otp-index-count.service";
 
 import {
@@ -13,6 +12,8 @@ import {
   OtpVerificationRequest,
   OtpVerificationResponse,
   OtpView,
+  OtpWindowUpdateRequest,
+  OtpWindowUpdateResponse,
   SignerContractPair,
   UserRegistrationResponse,
 } from "./models";
@@ -22,7 +23,7 @@ import {
   USER_REGISTRATION_TYPE,
   UserRegistration,
 } from "./models/eip-712-structs.model";
-import { handleException } from "./utils/handleException";
+import { handleBlockchainException } from "./utils/handleException";
 @Injectable()
 export class OtpService {
   private readonly provider: ethers.JsonRpcProvider;
@@ -35,7 +36,6 @@ export class OtpService {
   constructor(
     private readonly configService: ConfigService,
     private readonly userOtpIndexCountService: UserOtpIndexCountService,
-    private readonly userKeyService: UserKeyService,
     private readonly userService: UserService,
   ) {
     const CONTRACT_ADDRESS = this.configService.get<string>("CONTRACT_ADDRESS");
@@ -66,7 +66,7 @@ export class OtpService {
     this.contractCalledByAdmin = pair.contract;
   }
 
-  getDomain(): TypedDataDomain {
+  private getDomain(): TypedDataDomain {
     return {
       name: "OTPSystem",
       version: "1",
@@ -75,7 +75,7 @@ export class OtpService {
     };
   }
 
-  getSignerAndContractBySecretKey(sk: string): SignerContractPair {
+  private getSignerAndContractBySecretKey(sk: string): SignerContractPair {
     const signer = new ethers.Wallet(sk, this.provider);
     const contract = new ethers.Contract(
       this.contractAddress,
@@ -85,23 +85,23 @@ export class OtpService {
     return { signer, contract };
   }
 
-  getBlockchainUserId(userId: string): string {
+  private getBlockchainUserId(userId: string): string {
     return ethers.keccak256(
       ethers.toUtf8Bytes(`${userId}:${this.servicePublicKey}`),
     );
   }
 
-  async getSignedTypedData(
+  private async getSignedTypedData(
     type: "register",
     data: UserRegistration,
     signer: ethers.Wallet,
   ): Promise<string>;
-  async getSignedTypedData(
+  private async getSignedTypedData(
     type: "verify",
     data: OTPVerification,
     signer: ethers.Wallet,
   ): Promise<string>;
-  async getSignedTypedData(
+  private async getSignedTypedData(
     type: "register" | "verify",
     data: UserRegistration | OTPVerification,
     signer: ethers.Wallet,
@@ -115,70 +115,117 @@ export class OtpService {
   async generateOtp({
     user_id,
     provider_id,
+    duration = 5 * 60, // 5 minutes
   }: OtpGeneratedRequest): Promise<OtpView> {
-    const user = await this.userService.byId(user_id);
+    const { username, secret_key } =
+      await this.userService.getSensitiveUserDetails(user_id);
 
-    if (!user) {
-      throw new HttpException("User not found", HttpStatus.NOT_FOUND);
-    }
+    const otp_index = await this.userOtpIndexCountService.getOtpIndex(user_id);
 
-    const { secretKey: userSk } =
-      await this.userKeyService.getKeyPairs(user_id);
+    const currentTimeInSeconds = Math.floor(Date.now() / 1000);
 
-    if (!userSk) {
-      throw new HttpException("User key not found", HttpStatus.NOT_FOUND);
-    }
+    await this.updateOtpWindow({
+      user_id,
+      start_time: currentTimeInSeconds, // epoch time
+      end_time: currentTimeInSeconds + duration, // epoch time
+    });
 
-    const otp_index =
-      await this.userOtpIndexCountService.getOtpIndexAndIncrement(user_id);
+    const otp = ethers.keccak256(
+      ethers.toUtf8Bytes(
+        `${username}:${provider_id}:${secret_key}:${otp_index}`,
+      ),
+    );
+
+    // eslint-disable-next-line no-console
+    console.log(otp_index, otp_index + 1);
+
+    const nextOtp = ethers.keccak256(
+      ethers.toUtf8Bytes(
+        `${username}:${provider_id}:${secret_key}:${otp_index + 1}`,
+      ),
+    );
 
     return {
-      otp: ethers.keccak256(
-        ethers.toUtf8Bytes(
-          `${user.username}:${provider_id}:${userSk}:${otp_index}`,
-        ),
-      ),
+      otp,
+      new_commitment_value: ethers.keccak256(nextOtp),
     };
+  }
+
+  async getUserWalletBalance(user_public_key: string): Promise<string> {
+    try {
+      const balanceInWei = await this.provider.getBalance(user_public_key);
+      const balanceInEth = ethers.formatEther(balanceInWei);
+      return balanceInEth; // Returns balance as a string, e.g., "0.013"
+    } catch (error: unknown) {
+      throw new HttpException(
+        {
+          message: "Failed to retrieve user balance",
+          details: error instanceof Error ? error.message : String(error),
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async refundToAdminWallet(
+    user_id: string,
+    amountInEth: string,
+    admin_wallet_address: string,
+  ) {
+    const { secret_key } =
+      await this.userService.getSensitiveUserDetails(user_id);
+
+    const { signer } = this.getSignerAndContractBySecretKey(secret_key);
+
+    const tx = await signer.sendTransaction({
+      to: admin_wallet_address,
+      value: ethers.parseEther(amountInEth),
+    });
+
+    return await tx.wait();
+  }
+
+  async fundUserWallet(user_public_key: string, amountInEth = "0.0001") {
+    const tx = await this.admin.sendTransaction({
+      to: user_public_key,
+      value: ethers.parseEther(amountInEth),
+    });
+
+    return await tx.wait();
   }
 
   async registerUser({
     user_id,
     provider_id,
   }: OtpRegisterRequest): Promise<UserRegistrationResponse> {
+    const { username, secret_key, public_key } =
+      await this.userService.getSensitiveUserDetails(user_id);
+
+    const otp_index = 1;
+    const nextOtp = ethers.keccak256(
+      ethers.toUtf8Bytes(
+        `${username}:${provider_id}:${secret_key}:${otp_index}`,
+      ),
+    );
+
+    const { signer, contract } =
+      this.getSignerAndContractBySecretKey(secret_key);
+
+    const request: UserRegistration = {
+      username,
+      service: this.servicePublicKey,
+      commitmentValue: ethers.keccak256(nextOtp),
+    };
+
+    const signature = await this.getSignedTypedData(
+      "register",
+      request,
+      signer,
+    );
+
     try {
-      const user = await this.userService.byId(user_id);
-
-      if (!user) {
-        throw new HttpException("User not found", HttpStatus.NOT_FOUND);
-      }
-
-      const { secretKey: userSk } =
-        await this.userKeyService.getKeyPairs(user_id);
-
-      if (!userSk) {
-        throw new HttpException("User key not found", HttpStatus.NOT_FOUND);
-      }
-
-      const otp_index = 1;
-      const nextOtp = ethers.keccak256(
-        ethers.toUtf8Bytes(
-          `${user.username}:${provider_id}:${userSk}:${otp_index}`,
-        ),
-      );
-
-      const { signer, contract } = this.getSignerAndContractBySecretKey(userSk);
-
-      const request = {
-        username: user.username,
-        service: this.servicePublicKey,
-        commitmentValue: ethers.keccak256(nextOtp),
-      };
-
-      const signature = await this.getSignedTypedData(
-        "register",
-        request,
-        signer,
-      );
+      // fund user wallet
+      await this.fundUserWallet(public_key);
 
       const tx = await contract.registerUser(
         this.getBlockchainUserId(user_id),
@@ -194,7 +241,44 @@ export class OtpService {
         transactionHash: receipt.transactionHash,
       };
     } catch (error: unknown) {
-      const errorResponse = handleException("registering user", error);
+      const errorResponse = handleBlockchainException(
+        "registering user",
+        error,
+      );
+      throw new HttpException(
+        {
+          message: errorResponse.message,
+          details: errorResponse.details,
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  async updateOtpWindow({
+    user_id,
+    start_time,
+    end_time,
+  }: OtpWindowUpdateRequest): Promise<OtpWindowUpdateResponse> {
+    try {
+      const tx = await this.contractCalledByAdmin.updateOtpWindow(
+        this.getBlockchainUserId(user_id),
+        start_time,
+        end_time,
+      );
+
+      const receipt = await tx.wait();
+
+      return {
+        success: true,
+        message: "OTP window updated successfully",
+        transactionHash: receipt.transactionHash,
+      };
+    } catch (error: unknown) {
+      const errorResponse = handleBlockchainException(
+        "updating OTP window",
+        error,
+      );
       throw new HttpException(
         {
           message: errorResponse.message,
@@ -206,20 +290,41 @@ export class OtpService {
   }
 
   async verifyOtp({
-    transactionId,
+    user_id,
     otp,
-    signature,
+    new_commitment_value,
   }: OtpVerificationRequest): Promise<OtpVerificationResponse> {
+    const { username, secret_key } =
+      await this.userService.getSensitiveUserDetails(user_id);
+
+    const { signer, contract } =
+      this.getSignerAndContractBySecretKey(secret_key);
+
+    const request: OTPVerification = {
+      username,
+      service: this.servicePublicKey,
+      otp: otp,
+      newCommitmentValue: new_commitment_value,
+    };
+
+    const signature = await this.getSignedTypedData("verify", request, signer);
+
+    const otp_index = await this.userOtpIndexCountService.getOtpIndex(user_id);
+
     try {
       // Interact with the smart contract to verify the OTP
-      const tx = await this.contractCalledByAdmin.verifyOtp(
-        transactionId,
-        otp,
+      const tx = await contract.verifyOtp(
+        this.getBlockchainUserId(user_id),
+        otp_index,
+        request,
         signature,
       );
 
       // Wait for the transaction to be mined
       const receipt = await tx.wait();
+
+      // update otp index after successful verification
+      await this.userOtpIndexCountService.incrementOtpIndex(user_id);
 
       return {
         success: true,
@@ -227,7 +332,7 @@ export class OtpService {
         transactionHash: receipt.transactionHash,
       };
     } catch (error: unknown) {
-      const errorResponse = handleException("verifying OTP", error);
+      const errorResponse = handleBlockchainException("verifying OTP", error);
       throw new HttpException(
         {
           message: errorResponse.message,
@@ -238,27 +343,151 @@ export class OtpService {
     }
   }
 
-  async isOtpValid(transactionId: string) {
+  async checkRole(user_id: string, role: string) {
     try {
-      // Hash the transactionId to match the on-chain format
-      const hashedTransactionId = ethers.keccak256(
-        ethers.toUtf8Bytes(transactionId),
+      const roleHash = ethers.keccak256(ethers.toUtf8Bytes(role));
+      const isGranted = await this.contractCalledByAdmin.hasRole(
+        roleHash,
+        this.getBlockchainUserId(user_id),
       );
 
-      // Check OTP validity on-chain
-      const isValid =
-        await this.contractCalledByAdmin.isOtpValid(hashedTransactionId);
-
-      // Return the result
-      return { isValid };
+      return isGranted;
     } catch (error: unknown) {
-      const errorResponse = handleException("checking OTP valid", error);
+      const errorResponse = handleBlockchainException("checking role", error);
       throw new HttpException(
         {
           message: errorResponse.message,
           details: errorResponse.details,
         },
-        HttpStatus.BAD_REQUEST,
+        errorResponse.code,
+      );
+    }
+  }
+
+  async grantRole(role: string, wallet_address: string) {
+    try {
+      const tx = await this.contractCalledByAdmin.grantRole(
+        ethers.keccak256(ethers.toUtf8Bytes(role)),
+        wallet_address,
+      );
+
+      const receipt = await tx.wait();
+
+      return {
+        success: true,
+        message: "Role granted successfully",
+        transactionHash: receipt.transactionHash,
+      };
+    } catch (error: unknown) {
+      const errorResponse = handleBlockchainException("granting role", error);
+      throw new HttpException(
+        {
+          message: errorResponse.message,
+          details: errorResponse.details,
+        },
+        errorResponse.code,
+      );
+    }
+  }
+
+  async blacklistUser(user_id: string) {
+    try {
+      const tx = await this.contractCalledByAdmin.blacklistUser(
+        this.getBlockchainUserId(user_id),
+      );
+
+      const receipt = await tx.wait();
+
+      return {
+        success: true,
+        message: "User blacklisted successfully",
+        transactionHash: receipt.transactionHash,
+      };
+    } catch (error: unknown) {
+      const errorResponse = handleBlockchainException(
+        "blacklisting user",
+        error,
+      );
+      throw new HttpException(
+        {
+          message: errorResponse.message,
+          details: errorResponse.details,
+        },
+        errorResponse.code,
+      );
+    }
+  }
+
+  async removeFromBlacklist(user_id: string) {
+    try {
+      const tx = await this.contractCalledByAdmin.removeFromBlacklist(
+        this.getBlockchainUserId(user_id),
+      );
+
+      const receipt = await tx.wait();
+
+      return {
+        success: true,
+        message: "User removed from blacklist successfully",
+        transactionHash: receipt.transactionHash,
+      };
+    } catch (error: unknown) {
+      const errorResponse = handleBlockchainException(
+        "removing user from blacklist",
+        error,
+      );
+      throw new HttpException(
+        {
+          message: errorResponse.message,
+          details: errorResponse.details,
+        },
+        errorResponse.code,
+      );
+    }
+  }
+
+  async resetManyOtps(user_ids: string[]) {
+    try {
+      const tx = await this.contractCalledByAdmin.resetManyOtps(
+        user_ids.map((id) => this.getBlockchainUserId(id)),
+      );
+
+      const receipt = await tx.wait();
+
+      return {
+        success: true,
+        message: "OTPs reset successfully",
+        transactionHash: receipt.transactionHash,
+      };
+    } catch (error: unknown) {
+      const errorResponse = handleBlockchainException(
+        "resetting many otps",
+        error,
+      );
+      throw new HttpException(
+        {
+          message: errorResponse.message,
+          details: errorResponse.details,
+        },
+        errorResponse.code,
+      );
+    }
+  }
+
+  async viewOtpData(user_id: string) {
+    try {
+      const data = await this.contractCalledByAdmin.getOtpDetails(
+        this.getBlockchainUserId(user_id),
+      );
+
+      return { data };
+    } catch (error: unknown) {
+      throw new HttpException(
+        {
+          message: "Failed to retrieve OTP data",
+          details: error instanceof Error ? error.message : String(error),
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
