@@ -2,6 +2,7 @@ import { ethers } from "ethers";
 
 export interface OtpView {
   otp: string;
+  new_commitment_value: string;
 }
 
 export interface SignerContractPair {

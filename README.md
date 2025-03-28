@@ -33,10 +33,18 @@ npx hardhat node
 
 ### Step 3: Deploy the OTP Smart Contract
 
-Use the **Hardhat Ignition** module to deploy the contract locally:
+Use the **Hardhat Ignition** module
+
+To deploy the contract locally:
 
 ```bash
-npx hardhat ignition deploy ./ignition/modules/OTPSystem.ts --network localhost
+yarn deploy-local
+```
+
+To deploy the contract on Sepolia network
+
+```bash
+yarn deploy-sepolia
 ```
 
 ### Step 4: Run docker and migrate sql scripts

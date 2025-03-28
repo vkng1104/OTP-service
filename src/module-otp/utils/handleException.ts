@@ -1,8 +1,8 @@
 import { ErrorResponse } from "~/module-common/model/response/error-response.dto";
 
-import { TransactionRevertLog } from "../models/views/error";
+import { BlockchainTransactionRevertLog } from "../models/views/error";
 
-export function handleException(
+export function handleBlockchainException(
   endpoint: string,
   error: unknown,
 ): ErrorResponse {
@@ -10,20 +10,27 @@ export function handleException(
   console.error(`Error in ${endpoint}:`, error);
 
   // Try to extract the transaction revert details using the TransactionRevertLog type
-  const transactionLog: TransactionRevertLog = {
-    code: (error as TransactionRevertLog).code || "UNKNOWN",
-    reason: (error as TransactionRevertLog).reason || "Unknown reason",
+  const transactionLog: BlockchainTransactionRevertLog = {
+    code: (error as BlockchainTransactionRevertLog).code || "UNKNOWN",
+    reason:
+      (error as BlockchainTransactionRevertLog).reason || "Unknown reason",
     transaction: {
-      to: (error as TransactionRevertLog).transaction?.to || "Unknown",
-      from: (error as TransactionRevertLog).transaction?.from || "Unknown",
-      data: (error as TransactionRevertLog).transaction?.data || "Unknown",
+      to:
+        (error as BlockchainTransactionRevertLog).transaction?.to || "Unknown",
+      from:
+        (error as BlockchainTransactionRevertLog).transaction?.from ||
+        "Unknown",
+      data:
+        (error as BlockchainTransactionRevertLog).transaction?.data ||
+        "Unknown",
     },
     revert: {
-      name: (error as TransactionRevertLog).revert?.name || "Unknown",
-      args: (error as TransactionRevertLog).revert?.args || [],
+      name: (error as BlockchainTransactionRevertLog).revert?.name || "Unknown",
+      args: (error as BlockchainTransactionRevertLog).revert?.args || [],
     },
     shortMessage:
-      (error as TransactionRevertLog).shortMessage || "Unknown error occurred",
+      (error as BlockchainTransactionRevertLog).shortMessage ||
+      "Unknown error occurred",
   };
 
   // Check if the error is a revert error

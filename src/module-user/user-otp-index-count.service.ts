@@ -24,6 +24,47 @@ export class UserOtpIndexCountService {
   }
 
   /**
+   * Get the current OTP index for a user.
+   * @param userId The user ID.
+   * @returns The current OTP index.
+   */
+  async getOtpIndex(userId: string): Promise<number> {
+    const userOtpIndexCount = await this.userOtpIndexCountRepository.findOne({
+      where: { user_id: userId, deleted_at: IsNull() },
+    });
+
+    if (!userOtpIndexCount) {
+      throw new NotFoundException(
+        `User OTP index not found for user_id: ${userId}`,
+      );
+    }
+
+    return Number(userOtpIndexCount.otp_index);
+  }
+
+  /**
+   * Increment the OTP index for a user.
+   * @param userId The user ID.
+   * @returns The incremented OTP index.
+   */
+  async incrementOtpIndex(userId: string): Promise<number> {
+    const userOtpIndexCount = await this.userOtpIndexCountRepository.findOne({
+      where: { user_id: userId, deleted_at: IsNull() },
+    });
+
+    if (!userOtpIndexCount) {
+      throw new NotFoundException(
+        `User OTP index not found for user_id: ${userId}`,
+      );
+    }
+
+    userOtpIndexCount.otp_index = Number(userOtpIndexCount.otp_index) + 1;
+    await this.userOtpIndexCountRepository.save(userOtpIndexCount);
+
+    return userOtpIndexCount.otp_index;
+  }
+
+  /**
    * Get OTP index and increment it with pessimistic locking.
    * Throws if user record doesn't exist.
    * @param userId The user ID.
@@ -46,10 +87,10 @@ export class UserOtpIndexCountService {
           );
         }
 
-        userOtpIndexCount.otp_index += 1;
+        userOtpIndexCount.otp_index = Number(userOtpIndexCount.otp_index) + 1;
         await manager.save(userOtpIndexCount);
 
-        return userOtpIndexCount.otp_index;
+        return Number(userOtpIndexCount.otp_index);
       },
     );
   }
