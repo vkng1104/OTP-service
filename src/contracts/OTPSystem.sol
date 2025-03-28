@@ -240,12 +240,26 @@ contract OTPSystem is EIP712, AccessControl, ReentrancyGuard {
    * @dev Retrieves the OTP data for a specific user.
    *
    * @param userId The unique user ID to retrieve OTP data for.
-   * @return The OTPData struct containing the user's OTP data.
+   * @return commitmentValue The commitment value of the OTP.
+   * @return index The index of the OTP.
+   * @return startTime The start time of the OTP.
+   * @return endTime The end time of the OTP.
    */
-  function viewOtpData(
+  function getOtpDetails(
     bytes32 userId
-  ) external view onlyRole(ADMIN_ROLE) returns (OTPData memory) {
-    return otpRecords[userId];
+  )
+    external
+    view
+    onlyRole(ADMIN_ROLE)
+    returns (
+      bytes32 commitmentValue,
+      uint256 index,
+      uint256 startTime,
+      uint256 endTime
+    )
+  {
+    OTPData memory otp = otpRecords[userId];
+    return (otp.commitmentValue, otp.index, otp.startTime, otp.endTime);
   }
 
   function blacklistUser(bytes32 userId) external onlyRole(ADMIN_ROLE) {

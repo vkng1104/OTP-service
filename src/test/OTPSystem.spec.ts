@@ -333,6 +333,9 @@ describe("OTPSystem", function () {
       // 🔹 Ensure the commitment is updated correctly
       const updatedData = await otpSystem.otpRecords(userId);
       expect(updatedData.commitmentValue).to.equal(newCommitmentValue);
+      expect(updatedData.index).to.equal(2);
+      expect(updatedData.startTime).to.equal(0);
+      expect(updatedData.endTime).to.equal(0);
 
       /************** FOR THE NEXT INDEX ***************/
 
@@ -379,6 +382,9 @@ describe("OTPSystem", function () {
       expect(secondUpdatedData.commitmentValue).to.equal(
         secondNewCommitmentValue,
       );
+      expect(secondUpdatedData.index).to.equal(3);
+      expect(secondUpdatedData.startTime).to.equal(0);
+      expect(secondUpdatedData.endTime).to.equal(0);
     });
 
     it("Should reject OTP verification with bad request", async function () {
@@ -829,7 +835,7 @@ describe("OTPSystem", function () {
     });
 
     it("Should allow admin to view OTP data", async function () {
-      const { otpSystem, admin, user } = await loadFixture(
+      const { otpSystem, admin, owner, user } = await loadFixture(
         deployOtpSystemFixture,
       );
       const commitment = ethers.keccak256(ethers.toUtf8Bytes("viewdata"));
@@ -847,18 +853,27 @@ describe("OTPSystem", function () {
 
       await otpSystem.connect(admin).updateOtpWindow(userId, 1234, 4567);
 
-      const data = await otpSystem.connect(admin).viewOtpData(userId);
+      const data = await otpSystem.connect(admin).getOtpDetails(userId);
 
       expect(data.commitmentValue).to.equal(commitment);
       expect(data.startTime).to.equal(1234);
       expect(data.endTime).to.equal(4567);
+
+      const dataFetchedByOwner = await otpSystem
+        .connect(owner)
+        .getOtpDetails(userId);
+
+      expect(dataFetchedByOwner.commitmentValue).to.equal(commitment);
+      expect(dataFetchedByOwner.startTime).to.equal(1234);
+      expect(dataFetchedByOwner.endTime).to.equal(4567);
     });
 
     it("Should revert viewOtpData for non-admin", async function () {
       const { otpSystem, user } = await loadFixture(deployOtpSystemFixture);
       const userId = ethers.keccak256(ethers.toUtf8Bytes("unauthorized"));
 
-      await expect(otpSystem.connect(user).viewOtpData(userId)).to.be.reverted;
+      await expect(otpSystem.connect(user).getOtpDetails(userId)).to.be
+        .reverted;
     });
   });
 });
