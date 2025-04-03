@@ -9,5 +9,5 @@ export interface OtpWindowUpdateResponse extends BlockchainBaseResponse {}
 export interface BlockchainBaseResponse {
   success: boolean;
   message: string;
-  transactionHash: string;
+  txnLogUrl: string;
 }

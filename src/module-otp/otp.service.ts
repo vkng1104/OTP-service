@@ -7,6 +7,7 @@ import { UserService } from "~/module-user/user.service";
 import { UserOtpIndexCountService } from "~/module-user/user-otp-index-count.service";
 
 import {
+  BlockchainBaseResponse,
   OtpGeneratedRequest,
   OtpRegisterRequest,
   OtpVerificationRequest,
@@ -32,7 +33,7 @@ export class OtpService {
   private readonly contractAddress: string;
   private readonly chainId: number;
   private readonly servicePublicKey: string;
-
+  private readonly etherscanUrl: string;
   constructor(
     private readonly configService: ConfigService,
     private readonly userOtpIndexCountService: UserOtpIndexCountService,
@@ -57,6 +58,7 @@ export class OtpService {
     }
 
     // Initialize Ethereum components
+    this.etherscanUrl = this.configService.get<string>("ETHERSCAN_URL");
     this.contractAddress = CONTRACT_ADDRESS;
     this.chainId = CHAIN_ID;
     this.servicePublicKey = SERVICE_PUBLIC_KEY;
@@ -89,6 +91,10 @@ export class OtpService {
     return ethers.keccak256(
       ethers.toUtf8Bytes(`${userId}:${this.servicePublicKey}`),
     );
+  }
+
+  private getTxnLogUrl(txnHash: string): string {
+    return `${this.etherscanUrl}/tx/${txnHash}`;
   }
 
   private async getSignedTypedData(
@@ -151,9 +157,9 @@ export class OtpService {
     };
   }
 
-  async getUserWalletBalance(user_public_key: string): Promise<string> {
+  async getUserWalletBalance(user_wallet_address: string): Promise<string> {
     try {
-      const balanceInWei = await this.provider.getBalance(user_public_key);
+      const balanceInWei = await this.provider.getBalance(user_wallet_address);
       const balanceInEth = ethers.formatEther(balanceInWei);
       return balanceInEth; // Returns balance as a string, e.g., "0.013"
     } catch (error: unknown) {
@@ -171,27 +177,55 @@ export class OtpService {
     user_id: string,
     amountInEth: string,
     admin_wallet_address: string,
-  ) {
+  ): Promise<BlockchainBaseResponse> {
     const { secret_key } =
       await this.userService.getSensitiveUserDetails(user_id);
 
     const { signer } = this.getSignerAndContractBySecretKey(secret_key);
 
-    const tx = await signer.sendTransaction({
-      to: admin_wallet_address,
-      value: ethers.parseEther(amountInEth),
-    });
+    try {
+      const tx = await signer.sendTransaction({
+        to: admin_wallet_address,
+        value: ethers.parseEther(amountInEth),
+      });
 
-    return await tx.wait();
+      return {
+        success: true,
+        message: "Refund to admin wallet successful",
+        txnLogUrl: this.getTxnLogUrl(tx.hash),
+      };
+    } catch (error: unknown) {
+      throw new HttpException(
+        {
+          message: "Failed to refund to admin wallet",
+          details: error instanceof Error ? error.message : String(error),
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
-  async fundUserWallet(user_public_key: string, amountInEth = "0.0001") {
-    const tx = await this.admin.sendTransaction({
-      to: user_public_key,
-      value: ethers.parseEther(amountInEth),
-    });
+  async fundUserWallet(user_wallet_address: string, amountInEth = "0.01") {
+    try {
+      const tx = await this.admin.sendTransaction({
+        to: user_wallet_address,
+        value: ethers.parseEther(amountInEth),
+      });
 
-    return await tx.wait();
+      return {
+        success: true,
+        message: "User wallet funded successfully",
+        txnLogUrl: this.getTxnLogUrl(tx.hash),
+      };
+    } catch (error: unknown) {
+      throw new HttpException(
+        {
+          message: "Failed to fund user wallet",
+          details: error instanceof Error ? error.message : String(error),
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
   async registerUser({
@@ -232,13 +266,11 @@ export class OtpService {
         request,
         signature,
       );
-      // Wait for the transaction to be mined
-      const receipt = await tx.wait();
 
       return {
         success: true,
         message: "User registered successfully",
-        transactionHash: receipt.transactionHash,
+        txnLogUrl: this.getTxnLogUrl(tx.hash),
       };
     } catch (error: unknown) {
       const errorResponse = handleBlockchainException(
@@ -267,12 +299,10 @@ export class OtpService {
         end_time,
       );
 
-      const receipt = await tx.wait();
-
       return {
         success: true,
         message: "OTP window updated successfully",
-        transactionHash: receipt.transactionHash,
+        txnLogUrl: this.getTxnLogUrl(tx.hash),
       };
     } catch (error: unknown) {
       const errorResponse = handleBlockchainException(
@@ -320,16 +350,13 @@ export class OtpService {
         signature,
       );
 
-      // Wait for the transaction to be mined
-      const receipt = await tx.wait();
-
       // update otp index after successful verification
       await this.userOtpIndexCountService.incrementOtpIndex(user_id);
 
       return {
         success: true,
         message: "OTP verified successfully",
-        transactionHash: receipt.transactionHash,
+        txnLogUrl: this.getTxnLogUrl(tx.hash),
       };
     } catch (error: unknown) {
       const errorResponse = handleBlockchainException("verifying OTP", error);
@@ -343,12 +370,12 @@ export class OtpService {
     }
   }
 
-  async checkRole(user_id: string, role: string) {
+  async checkRole(wallet_address: string, role: string) {
     try {
       const roleHash = ethers.keccak256(ethers.toUtf8Bytes(role));
       const isGranted = await this.contractCalledByAdmin.hasRole(
         roleHash,
-        this.getBlockchainUserId(user_id),
+        wallet_address,
       );
 
       return isGranted;
@@ -364,19 +391,20 @@ export class OtpService {
     }
   }
 
-  async grantRole(role: string, wallet_address: string) {
+  async grantRole(
+    role: string,
+    wallet_address: string,
+  ): Promise<BlockchainBaseResponse> {
     try {
       const tx = await this.contractCalledByAdmin.grantRole(
         ethers.keccak256(ethers.toUtf8Bytes(role)),
         wallet_address,
       );
 
-      const receipt = await tx.wait();
-
       return {
         success: true,
         message: "Role granted successfully",
-        transactionHash: receipt.transactionHash,
+        txnLogUrl: this.getTxnLogUrl(tx.hash),
       };
     } catch (error: unknown) {
       const errorResponse = handleBlockchainException("granting role", error);
@@ -390,18 +418,16 @@ export class OtpService {
     }
   }
 
-  async blacklistUser(user_id: string) {
+  async blacklistUser(user_id: string): Promise<BlockchainBaseResponse> {
     try {
       const tx = await this.contractCalledByAdmin.blacklistUser(
         this.getBlockchainUserId(user_id),
       );
 
-      const receipt = await tx.wait();
-
       return {
         success: true,
         message: "User blacklisted successfully",
-        transactionHash: receipt.transactionHash,
+        txnLogUrl: this.getTxnLogUrl(tx.hash),
       };
     } catch (error: unknown) {
       const errorResponse = handleBlockchainException(
@@ -418,18 +444,16 @@ export class OtpService {
     }
   }
 
-  async removeFromBlacklist(user_id: string) {
+  async removeFromBlacklist(user_id: string): Promise<BlockchainBaseResponse> {
     try {
       const tx = await this.contractCalledByAdmin.removeFromBlacklist(
         this.getBlockchainUserId(user_id),
       );
 
-      const receipt = await tx.wait();
-
       return {
         success: true,
         message: "User removed from blacklist successfully",
-        transactionHash: receipt.transactionHash,
+        txnLogUrl: this.getTxnLogUrl(tx.hash),
       };
     } catch (error: unknown) {
       const errorResponse = handleBlockchainException(
@@ -452,12 +476,10 @@ export class OtpService {
         user_ids.map((id) => this.getBlockchainUserId(id)),
       );
 
-      const receipt = await tx.wait();
-
       return {
         success: true,
         message: "OTPs reset successfully",
-        transactionHash: receipt.transactionHash,
+        txnLogUrl: this.getTxnLogUrl(tx.hash),
       };
     } catch (error: unknown) {
       const errorResponse = handleBlockchainException(
@@ -476,11 +498,19 @@ export class OtpService {
 
   async viewOtpData(user_id: string) {
     try {
-      const data = await this.contractCalledByAdmin.getOtpDetails(
-        this.getBlockchainUserId(user_id),
-      );
+      const [commitmentValue, index, startTime, endTime] =
+        await this.contractCalledByAdmin.getOtpDetails(
+          this.getBlockchainUserId(user_id),
+        );
 
-      return { data };
+      return {
+        data: {
+          commitmentValue,
+          index: index.toString(),
+          startTime: startTime.toString(),
+          endTime: endTime.toString(),
+        },
+      };
     } catch (error: unknown) {
       throw new HttpException(
         {
