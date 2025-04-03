@@ -24,7 +24,7 @@ import {
   USER_REGISTRATION_TYPE,
   UserRegistration,
 } from "./models/eip-712-structs.model";
-import { handleBlockchainException } from "./utils/handleException";
+import { handleBlockchainException } from "./utils/handle-exception.util";
 @Injectable()
 export class OtpService {
   private readonly provider: ethers.JsonRpcProvider;

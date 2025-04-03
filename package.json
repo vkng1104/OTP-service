@@ -4,7 +4,6 @@
   "description": "this is the backend handling otp system",
   "main": "index.js",
   "scripts": {
-    "test-contract": "npx hardhat test",
     "compile": "npx hardhat compile",
     "start-node-local": "npx hardhat node",
     "deploy-local": "npx hardhat ignition deploy ./ignition/modules/OTPSystem.ts --network localhost",
@@ -106,6 +105,9 @@
       "ts"
     ],
     "rootDir": "src",
+    "moduleNameMapper": {
+      "^~/(.*)$": "<rootDir>/$1"
+    },
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
