@@ -2,6 +2,7 @@ import dotenv from "dotenv";
 import { HardhatUserConfig } from "hardhat/config";
 
 import "@nomicfoundation/hardhat-toolbox";
+import "@nomicfoundation/hardhat-verify";
 dotenv.config();
 
 const privateKey = process.env.PRIVATE_KEY;
@@ -15,6 +16,11 @@ const config: HardhatUserConfig = {
     sepolia: {
       url: process.env.ETHEREUM_PROVIDER_URL,
       accounts: [privateKey],
+    },
+  },
+  etherscan: {
+    apiKey: {
+      sepolia: process.env.ETHERSCAN_API_KEY,
     },
   },
   paths: {

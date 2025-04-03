@@ -47,6 +47,12 @@ To deploy the contract on Sepolia network
 yarn deploy-sepolia
 ```
 
+after deployment, verify the contract
+
+```bash
+yarn verify:sepolia {YOUR_CONTRACT_ADDRESS}
+```
+
 ### Step 4: Run docker and migrate sql scripts
 
 ```bash
