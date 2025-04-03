@@ -14,9 +14,11 @@ import { OtpService } from "~/module-otp/otp.service";
 export class InternalController {
   constructor(private readonly otpService: OtpService) {}
 
-  @Get("user-wallet-balance/:user_id")
-  async getUserWalletBalance(@Param("user_id") user_id: string) {
-    return this.otpService.getUserWalletBalance(user_id);
+  @Get("user-wallet-balance/:user_wallet_address")
+  async getUserWalletBalance(
+    @Param("user_wallet_address") user_wallet_address: string,
+  ) {
+    return this.otpService.getUserWalletBalance(user_wallet_address);
   }
 
   @Post("refund-to-admin-wallet")

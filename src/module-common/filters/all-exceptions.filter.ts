@@ -32,7 +32,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const errorResponse: ErrorResponse = {
       code: status,
       message,
-      details: exception,
+      details: exception instanceof Error ? exception.stack : String(exception),
     };
 
     response.status(status).json(errorResponse);
