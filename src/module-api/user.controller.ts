@@ -30,14 +30,27 @@ export class UserController {
    */
   @Post("create")
   async createUser(@Body() request: CreateUserRequest): Promise<UserDto> {
-    const user = await this.userService.createUser(request);
+    let user: UserDto;
 
-    await this.otpService.registerUser({
-      user_id: user.id,
-      provider_id: request.provider_id,
-    });
+    try {
+      // Create user and related records in a transaction
+      user = await this.userService.createUser(request);
 
-    return user;
+      // External blockchain registration
+      await this.otpService.registerUser({
+        user_id: user.id,
+        provider_id: request.provider_id,
+      });
+
+      return user;
+    } catch (error) {
+      // Cleanup if OTP registration fails
+      if (user?.id) {
+        await this.userService.deleteUserCascade(user.id);
+      }
+
+      throw error;
+    }
   }
 
   /**
