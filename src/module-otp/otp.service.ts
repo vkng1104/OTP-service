@@ -1,5 +1,7 @@
-import { HttpException, HttpStatus, Injectable } from "@nestjs/common";
+import { CACHE_MANAGER } from "@nestjs/cache-manager";
+import { HttpException, HttpStatus, Inject, Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { Cache } from "cache-manager";
 import { ethers, TypedDataDomain } from "ethers";
 
 import OTPSystemJSON from "~/artifacts/src/contracts/OTPSystem.sol/OTPSystem.json"; // Import the ABI from the JSON file
@@ -25,6 +27,7 @@ import {
   UserRegistration,
 } from "./models/eip-712-structs.model";
 import { handleBlockchainException } from "./utils/handle-exception.util";
+import { generateNumericOtpFromHash } from "./utils/otp-generator.util";
 @Injectable()
 export class OtpService {
   private readonly provider: ethers.JsonRpcProvider;
@@ -38,6 +41,7 @@ export class OtpService {
     private readonly configService: ConfigService,
     private readonly userOtpIndexCountService: UserOtpIndexCountService,
     private readonly userService: UserService,
+    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
   ) {
     const CONTRACT_ADDRESS = this.configService.get<string>("CONTRACT_ADDRESS");
 
@@ -136,16 +140,16 @@ export class OtpService {
       end_time: currentTimeInSeconds + duration, // epoch time
     });
 
-    const otp = ethers.keccak256(
+    const rawOtp = ethers.keccak256(
       ethers.toUtf8Bytes(
         `${username}:${provider_id}:${secret_key}:${otp_index}`,
       ),
     );
+    const otp = generateNumericOtpFromHash(rawOtp);
 
-    // eslint-disable-next-line no-console
-    console.log(otp_index, otp_index + 1);
+    await this.cacheManager.set(`otp:${user_id}:${otp}`, rawOtp);
 
-    const nextOtp = ethers.keccak256(
+    const rawNextOtp = ethers.keccak256(
       ethers.toUtf8Bytes(
         `${username}:${provider_id}:${secret_key}:${otp_index + 1}`,
       ),
@@ -153,7 +157,7 @@ export class OtpService {
 
     return {
       otp,
-      new_commitment_value: ethers.keccak256(nextOtp),
+      new_commitment_value: ethers.keccak256(rawNextOtp),
     };
   }
 
@@ -236,7 +240,7 @@ export class OtpService {
       await this.userService.getSensitiveUserDetails(user_id);
 
     const otp_index = 1;
-    const nextOtp = ethers.keccak256(
+    const rawOtp = ethers.keccak256(
       ethers.toUtf8Bytes(
         `${username}:${provider_id}:${secret_key}:${otp_index}`,
       ),
@@ -248,7 +252,7 @@ export class OtpService {
     const request: UserRegistration = {
       username,
       service: this.servicePublicKey,
-      commitmentValue: ethers.keccak256(nextOtp),
+      commitmentValue: ethers.keccak256(rawOtp),
     };
 
     const signature = await this.getSignedTypedData(
@@ -330,10 +334,22 @@ export class OtpService {
     const { signer, contract } =
       this.getSignerAndContractBySecretKey(secret_key);
 
+    const rawOtp = await this.cacheManager.get(`otp:${user_id}:${otp}`);
+
+    if (!rawOtp || !ethers.isBytesLike(rawOtp)) {
+      throw new HttpException(
+        {
+          message: "Invalid OTP",
+          details: "OTP is not valid",
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
     const request: OTPVerification = {
       username,
       service: this.servicePublicKey,
-      otp: otp,
+      otp: rawOtp,
       newCommitmentValue: new_commitment_value,
     };
 

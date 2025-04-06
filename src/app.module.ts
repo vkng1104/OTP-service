@@ -1,3 +1,4 @@
+import { CacheModule } from "@nestjs/cache-manager";
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { TypeOrmModule } from "@nestjs/typeorm";
@@ -39,6 +40,7 @@ import { UserOtpIndexCountService } from "./module-user/user-otp-index-count.ser
       UserKeyEntity,
       UserOtpIndexCountEntity,
     ]), // Register UserEntity with TypeORM
+    CacheModule.register(),
   ],
   controllers: [OtpController, UserController, InternalController],
   providers: [

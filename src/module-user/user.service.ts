@@ -11,7 +11,10 @@ import { Repository } from "typeorm";
 import { PageableResponse } from "~/module-common/model/response/pageable-response.dto";
 
 import { AuthProviderService } from "./auth-provider.service";
+import { AuthProviderEntity } from "./entity/auth-provider.entity";
 import { UserEntity } from "./entity/user.entity";
+import { UserKeyEntity } from "./entity/user-key.entity";
+import { UserOtpIndexCountEntity } from "./entity/user-otp-index-count.entity";
 import { CreateUserRequest } from "./model/request/create-user-request.dto";
 import { SensitiveUserDetailDto } from "./model/sensitive-user-detail.dto";
 import { UserDto } from "./model/user.dto";
@@ -219,6 +222,46 @@ export class UserService {
         // Soft delete the user
         user.deleted_at = new Date();
         await transactionalEntityManager.save(user);
+      },
+    );
+
+    return true;
+  }
+
+  /**
+   * Hard delete user and all related data (auth providers, keys, index count).
+   */
+  async deleteUserCascade(userId: string): Promise<boolean> {
+    await this.userRepository.manager.transaction(
+      async (transactionalEntityManager) => {
+        const userResult = await transactionalEntityManager.delete(UserEntity, {
+          id: userId,
+        });
+
+        const providerResult = await transactionalEntityManager.delete(
+          AuthProviderEntity,
+          { user_id: userId },
+        );
+
+        const keyResult = await transactionalEntityManager.delete(
+          UserKeyEntity,
+          { user_id: userId },
+        );
+
+        const otpResult = await transactionalEntityManager.delete(
+          UserOtpIndexCountEntity,
+          { user_id: userId },
+        );
+
+        const allDeleted =
+          (userResult.affected ?? 0) > 0 &&
+          (providerResult.affected ?? 0) > 0 &&
+          (keyResult.affected ?? 0) > 0 &&
+          (otpResult.affected ?? 0) > 0;
+
+        if (!allDeleted) {
+          throw new Error("Failed to delete all user-related entities");
+        }
       },
     );
 

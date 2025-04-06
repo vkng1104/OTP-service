@@ -1,14 +1,16 @@
+import { ethers } from "ethers";
+
 export interface UserRegistration {
   username: string;
   service: string;
-  commitmentValue: string; // bytes32 string
+  commitmentValue: ethers.BytesLike; // bytes32
 }
 
 export interface OTPVerification {
   username: string;
   service: string;
-  otp: string; // bytes32 string
-  newCommitmentValue: string; // bytes32 string
+  otp: ethers.BytesLike; // bytes32
+  newCommitmentValue: ethers.BytesLike; // bytes32
 }
 
 export const USER_REGISTRATION_TYPE = {
