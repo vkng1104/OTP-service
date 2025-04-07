@@ -40,8 +40,7 @@ export class UserController {
       user = await this.userService.createUser(request);
 
       // External blockchain registration
-      await this.otpService.registerUser({
-        user_id: user.id,
+      await this.otpService.registerUser(user.id, {
         provider_id: request.provider_id,
       });
 

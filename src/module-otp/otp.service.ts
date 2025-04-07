@@ -11,10 +11,10 @@ import { UserOtpIndexCountService } from "~/module-user/user-otp-index-count.ser
 import {
   BlockchainBaseResponse,
   OtpGeneratedRequest,
+  OtpGeneratedResponse,
   OtpRegisterRequest,
   OtpVerificationRequest,
   OtpVerificationResponse,
-  OtpView,
   OtpWindowUpdateRequest,
   OtpWindowUpdateResponse,
   SignerContractPair,
@@ -122,22 +122,25 @@ export class OtpService {
     return signer.signTypedData(this.getDomain(), types, data);
   }
 
-  async generateOtp({
-    user_id,
-    provider_id,
-    duration = 5 * 60, // 5 minutes
-  }: OtpGeneratedRequest): Promise<OtpView> {
+  async generateOtp(
+    user_id: string,
+    {
+      provider_id,
+      duration = 5 * 60, // 5 minutes
+    }: OtpGeneratedRequest,
+  ): Promise<OtpGeneratedResponse> {
     const { username, secret_key } =
       await this.userService.getSensitiveUserDetails(user_id);
 
     const otp_index = await this.userOtpIndexCountService.getOtpIndex(user_id);
 
     const currentTimeInSeconds = Math.floor(Date.now() / 1000);
+    const endTimeInSeconds = currentTimeInSeconds + duration;
 
-    await this.updateOtpWindow({
+    const tx = await this.updateOtpWindow({
       user_id,
       start_time: currentTimeInSeconds, // epoch time
-      end_time: currentTimeInSeconds + duration, // epoch time
+      end_time: endTimeInSeconds, // epoch time
     });
 
     const rawOtp = ethers.keccak256(
@@ -156,8 +159,15 @@ export class OtpService {
     );
 
     return {
-      otp,
-      new_commitment_value: ethers.keccak256(rawNextOtp),
+      success: true,
+      message: "OTP generated successfully",
+      txnLogUrl: tx.txnLogUrl,
+      data: {
+        otp,
+        new_commitment_value: ethers.keccak256(rawNextOtp),
+        start_time: currentTimeInSeconds,
+        end_time: endTimeInSeconds,
+      },
     };
   }
 
@@ -232,10 +242,10 @@ export class OtpService {
     }
   }
 
-  async registerUser({
-    user_id,
-    provider_id,
-  }: OtpRegisterRequest): Promise<UserRegistrationResponse> {
+  async registerUser(
+    user_id: string,
+    { provider_id }: OtpRegisterRequest,
+  ): Promise<UserRegistrationResponse> {
     const { username, secret_key, public_key } =
       await this.userService.getSensitiveUserDetails(user_id);
 
@@ -323,11 +333,10 @@ export class OtpService {
     }
   }
 
-  async verifyOtp({
-    user_id,
-    otp,
-    new_commitment_value,
-  }: OtpVerificationRequest): Promise<OtpVerificationResponse> {
+  async verifyOtp(
+    user_id: string,
+    { otp, new_commitment_value }: OtpVerificationRequest,
+  ): Promise<OtpVerificationResponse> {
     const { username, secret_key } =
       await this.userService.getSensitiveUserDetails(user_id);
 

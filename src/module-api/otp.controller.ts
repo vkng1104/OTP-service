@@ -1,28 +1,37 @@
-import { Body, Controller, Post } from "@nestjs/common";
+import { Body, Controller, Post, Request, UseGuards } from "@nestjs/common";
 
+import { JwtAuthGuard } from "~/module-auth/guard/jwt-auth.guard";
+import { Roles } from "~/module-auth/guard/roles.decorator";
 import {
   OtpGeneratedRequest,
   OtpRegisterRequest,
   OtpVerificationRequest,
 } from "~/module-otp/model";
 import { OtpService } from "~/module-otp/otp.service";
+import { UserRole } from "~/module-user/constant";
 
 @Controller("api/otp")
 export class OtpController {
   constructor(private readonly otpService: OtpService) {}
 
   @Post("register-user")
-  async registerUser(@Body() request: OtpRegisterRequest) {
-    return this.otpService.registerUser(request);
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.USER)
+  async registerUser(@Body() request: OtpRegisterRequest, @Request() req) {
+    return this.otpService.registerUser(req.user.id, request);
   }
 
   @Post("generate")
-  async generateOtp(@Body() request: OtpGeneratedRequest) {
-    return this.otpService.generateOtp(request);
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.USER)
+  async generateOtp(@Body() request: OtpGeneratedRequest, @Request() req) {
+    return this.otpService.generateOtp(req.user.id, request);
   }
 
   @Post("verify")
-  async verifyOtp(@Body() request: OtpVerificationRequest) {
-    return this.otpService.verifyOtp(request);
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.USER)
+  async verifyOtp(@Body() request: OtpVerificationRequest, @Request() req) {
+    return this.otpService.verifyOtp(req.user.id, request);
   }
 }
