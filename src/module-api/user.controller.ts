@@ -5,11 +5,14 @@ import {
   Get,
   Param,
   Post,
+  UseGuards,
   UsePipes,
   ValidationPipe,
 } from "@nestjs/common";
 
+import { JwtAuthGuard, Roles, RolesGuard } from "~/module-auth";
 import { OtpService } from "~/module-otp/otp.service";
+import { UserRole } from "~/module-user/constant";
 import {
   CreateUserRequest,
   ListUsersRequest,
@@ -58,6 +61,8 @@ export class UserController {
    * Accepts pagination parameters in the request body.
    */
   @Post("list")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN)
   @UsePipes(new ValidationPipe({ transform: true })) // Enables validation
   async listUsers(
     @Body() request: ListUsersRequest,
@@ -77,6 +82,8 @@ export class UserController {
    * Retrieves a user by ID
    */
   @Get("by-id/:id")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN)
   async getUserById(@Param("id") id: string): Promise<UserDto> {
     return await this.userService.byId(id);
   }
@@ -85,6 +92,8 @@ export class UserController {
    * Deletes a user by ID
    */
   @Delete(":id")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN)
   async deleteUser(@Param("id") id: string): Promise<boolean> {
     return this.userService.deleteById(id);
   }

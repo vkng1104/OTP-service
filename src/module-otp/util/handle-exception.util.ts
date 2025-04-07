@@ -1,6 +1,6 @@
 import { ErrorResponse } from "~/module-common/model/response/error-response.dto";
 
-import { BlockchainTransactionRevertLog } from "../models/views/error";
+import { BlockchainTransactionRevertLog } from "../model/view/error";
 
 export function handleBlockchainException(
   endpoint: string,

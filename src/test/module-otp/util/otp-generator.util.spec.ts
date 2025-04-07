@@ -1,4 +1,4 @@
-import { generateNumericOtpFromHash } from "~/module-otp/utils/otp-generator.util";
+import { generateNumericOtpFromHash } from "~/module-otp/util/otp-generator.util";
 
 describe("generateNumericOtpFromHash", () => {
   it("should generate a 6-digit numeric OTP by default", () => {

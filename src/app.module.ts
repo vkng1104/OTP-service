@@ -1,20 +1,18 @@
-import { CacheModule } from "@nestjs/cache-manager";
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { TypeOrmModule } from "@nestjs/typeorm";
 
+import { AuthController } from "./module-api/auth.controller";
 import { InternalController } from "./module-api/internal.controller";
 import { OtpController } from "./module-api/otp.controller";
 import { UserController } from "./module-api/user.controller";
-import { OtpService } from "./module-otp/otp.service";
-import { AuthProviderService } from "./module-user/auth-provider.service";
+import { JwtAuthModule } from "./module-auth/jwt-auth.module";
+import { OtpModule } from "./module-otp/otp.module";
 import { AuthProviderEntity } from "./module-user/entity/auth-provider.entity";
 import { UserEntity } from "./module-user/entity/user.entity";
 import { UserKeyEntity } from "./module-user/entity/user-key.entity";
 import { UserOtpIndexCountEntity } from "./module-user/entity/user-otp-index-count.entity";
-import { UserService } from "./module-user/user.service";
-import { UserKeyService } from "./module-user/user-key.service";
-import { UserOtpIndexCountService } from "./module-user/user-otp-index-count.service";
+import { UserModule } from "./module-user/user.module";
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -34,21 +32,15 @@ import { UserOtpIndexCountService } from "./module-user/user-otp-index-count.ser
       synchronize: false, // Use migrations instead of auto-sync
       migrationsRun: true, // Run migrations automatically
     }),
-    TypeOrmModule.forFeature([
-      UserEntity,
-      AuthProviderEntity,
-      UserKeyEntity,
-      UserOtpIndexCountEntity,
-    ]), // Register UserEntity with TypeORM
-    CacheModule.register(),
+    JwtAuthModule,
+    UserModule,
+    OtpModule,
   ],
-  controllers: [OtpController, UserController, InternalController],
-  providers: [
-    OtpService,
-    UserService,
-    UserKeyService,
-    AuthProviderService,
-    UserOtpIndexCountService,
+  controllers: [
+    OtpController,
+    UserController,
+    InternalController,
+    AuthController,
   ],
 })
 export class AppModule {}

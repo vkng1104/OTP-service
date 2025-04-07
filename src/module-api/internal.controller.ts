@@ -7,7 +7,7 @@ import {
   RefundToAdminWalletRequest,
   RemoveUserFromBlacklistRequest,
   ResetManyOtpsRequest,
-} from "~/module-otp/models";
+} from "~/module-otp/model";
 import { OtpService } from "~/module-otp/otp.service";
 
 @Controller("api/internal")

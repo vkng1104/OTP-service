@@ -19,15 +19,15 @@ import {
   OtpWindowUpdateResponse,
   SignerContractPair,
   UserRegistrationResponse,
-} from "./models";
+} from "./model";
 import {
   OTP_VERIFICATION_TYPE,
   OTPVerification,
   USER_REGISTRATION_TYPE,
   UserRegistration,
-} from "./models/eip-712-structs.model";
-import { handleBlockchainException } from "./utils/handle-exception.util";
-import { generateNumericOtpFromHash } from "./utils/otp-generator.util";
+} from "./model/eip-712-structs.model";
+import { handleBlockchainException } from "./util/handle-exception.util";
+import { generateNumericOtpFromHash } from "./util/otp-generator.util";
 @Injectable()
 export class OtpService {
   private readonly provider: ethers.JsonRpcProvider;
