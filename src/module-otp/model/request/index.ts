@@ -4,10 +4,6 @@ import { IsNotEmpty, IsNumber, IsOptional, IsString } from "class-validator";
 export class OtpGeneratedRequest {
   @IsString()
   @IsNotEmpty()
-  user_id: string;
-
-  @IsString()
-  @IsNotEmpty()
   provider_id: string;
 
   @IsNumber()
@@ -18,32 +14,16 @@ export class OtpGeneratedRequest {
 export class OtpRegisterRequest {
   @IsString()
   @IsNotEmpty()
-  user_id: string;
-
-  @IsString()
-  @IsNotEmpty()
   provider_id: string;
 }
 
-export class OtpWindowUpdateRequest {
-  @IsString()
-  @IsNotEmpty()
+export type OtpWindowUpdateRequest = {
   user_id: string;
-
-  @IsNumber()
-  @IsNotEmpty()
   start_time: number;
-
-  @IsNumber()
-  @IsNotEmpty()
   end_time: number;
-}
+};
 
 export class OtpVerificationRequest {
-  @IsString()
-  @IsNotEmpty()
-  user_id: string;
-
   @IsString()
   @IsNotEmpty()
   otp: string;
