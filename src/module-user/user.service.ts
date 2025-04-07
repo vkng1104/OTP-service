@@ -1,16 +1,19 @@
 import {
+  BadRequestException,
   HttpException,
   HttpStatus,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
+import * as bcrypt from "bcrypt";
 import { plainToInstance } from "class-transformer";
-import { Repository } from "typeorm";
+import { IsNull, Repository } from "typeorm";
 
 import { PageableResponse } from "~/module-common/model/response/pageable-response.dto";
 
 import { AuthProviderService } from "./auth-provider.service";
+import { AuthenticationType } from "./constant";
 import { AuthProviderEntity } from "./entity/auth-provider.entity";
 import { UserEntity } from "./entity/user.entity";
 import { UserKeyEntity } from "./entity/user-key.entity";
@@ -73,11 +76,17 @@ export class UserService {
         // Create user OTP index count
         await this.userOtpIndexCountService.insert(user.id);
 
+        let providerId = request.provider_id || "";
+        if (request.provider === AuthenticationType.PASSWORD) {
+          // Hash the password
+          providerId = await bcrypt.hash(request.provider_id, 10);
+        }
+
         // Create auth provider
         const authProvider = await this.authProviderService.upsertAuthProvider(
           user.id,
           request.provider, // This must be one of AuthenticationType enum values
-          request.provider_id ?? "", // Can be OAuth ID, password hash, etc.
+          providerId, // Can be OAuth ID, password hash, etc.
         );
 
         // Update user active_auth_provider_id
@@ -176,6 +185,36 @@ export class UserService {
   }
 
   /**
+   * Retrieves a user by username or email.
+   * @param username The username of the user.
+   * @param email The email of the user.
+   * @returns A Promise resolving to a UserDto.
+   * @throws NotFoundException if the user does not exist.
+   */
+  async byUsernameOrEmail(
+    usernameOrEmail: string | undefined,
+  ): Promise<UserDto> {
+    if (!usernameOrEmail || usernameOrEmail.trim() === "") {
+      throw new BadRequestException("Username or email is required");
+    }
+
+    const user = await this.userRepository.findOne({
+      where: {
+        [usernameOrEmail.includes("@") ? "email" : "username"]: usernameOrEmail,
+        deleted_at: IsNull(),
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException(
+        `User with username or email ${usernameOrEmail} not found`,
+      );
+    }
+
+    return this.getUserDetails(user.id);
+  }
+
+  /**
    * Deletes a user by ID.
    * @param id The UUID of the user.
    * @returns A Promise resolving boolean indicating if deletion is successful or not.
@@ -184,7 +223,7 @@ export class UserService {
   async deleteById(id: string): Promise<boolean> {
     // Get the user entity instead of DTO
     const user = await this.userRepository.findOne({
-      where: { id, deleted_at: null },
+      where: { id, deleted_at: IsNull() },
     });
 
     if (!user) throw new NotFoundException(`User with ID ${id} not found`);
@@ -289,6 +328,7 @@ export class UserService {
       secret_key: userSk,
     };
   }
+
   /**
    * Helper function to retrieve user details with auth provider & public key.
    */

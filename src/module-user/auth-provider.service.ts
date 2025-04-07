@@ -1,9 +1,10 @@
 import { Injectable } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
+import * as bcrypt from "bcrypt";
 import { IsNull, Repository } from "typeorm";
 
+import { AuthenticationType } from "./constant";
 import { AuthProviderEntity } from "./entity/auth-provider.entity";
-
 @Injectable()
 export class AuthProviderService {
   constructor(
@@ -39,5 +40,21 @@ export class AuthProviderService {
     }
 
     return await this.authProviderRepository.save(authProvider);
+  }
+
+  async validatePassword(userId: string, password: string): Promise<boolean> {
+    const authProvider = await this.authProviderRepository.findOne({
+      where: {
+        user_id: userId,
+        provider: AuthenticationType.PASSWORD,
+        deleted_at: IsNull(),
+      },
+    });
+
+    if (!authProvider) {
+      return false;
+    }
+
+    return await bcrypt.compare(password, authProvider.provider_id);
   }
 }
