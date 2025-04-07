@@ -1,20 +1,23 @@
 import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { JwtService as NestJwtService } from "@nestjs/jwt";
+import ms from "ms";
+
+import { TokenInfo } from "./model/response/login-user-response.dto";
 
 @Injectable()
 export class JwtService {
-  private readonly accessTokenExpiresIn: string;
-  private readonly refreshTokenExpiresIn: string;
+  private readonly accessTokenExpiresIn: ms.StringValue;
+  private readonly refreshTokenExpiresIn: ms.StringValue;
   constructor(
     private readonly jwtService: NestJwtService,
     private readonly configService: ConfigService,
   ) {
-    this.accessTokenExpiresIn = this.configService.get<string>(
+    this.accessTokenExpiresIn = this.configService.get<ms.StringValue>(
       "JWT_EXPIRES_IN",
       "1h",
     );
-    this.refreshTokenExpiresIn = this.configService.get<string>(
+    this.refreshTokenExpiresIn = this.configService.get<ms.StringValue>(
       "JWT_REFRESH_EXPIRES_IN",
       "7d",
     );
@@ -29,15 +32,18 @@ export class JwtService {
   async generateToken(
     userId: string,
     additionalData: Record<string, unknown> = {},
-  ): Promise<string> {
+  ): Promise<TokenInfo> {
     const payload = {
       sub: userId,
       ...additionalData,
     };
 
-    return this.jwtService.signAsync(payload, {
-      expiresIn: this.accessTokenExpiresIn,
-    });
+    return {
+      value: await this.jwtService.signAsync(payload, {
+        expiresIn: this.accessTokenExpiresIn,
+      }),
+      expires_in: Date.now() + ms(this.accessTokenExpiresIn),
+    };
   }
 
   /**
@@ -71,11 +77,14 @@ export class JwtService {
    * @param userId The user ID to include in the token
    * @returns The generated refresh token
    */
-  async generateRefreshToken(userId: string): Promise<string> {
-    return this.jwtService.signAsync(
-      { sub: userId, type: "refresh" },
-      { expiresIn: this.refreshTokenExpiresIn },
-    );
+  async generateRefreshToken(userId: string): Promise<TokenInfo> {
+    return {
+      value: await this.jwtService.signAsync(
+        { sub: userId, type: "refresh" },
+        { expiresIn: this.refreshTokenExpiresIn },
+      ),
+      expires_in: Date.now() + ms(this.refreshTokenExpiresIn),
+    };
   }
 
   /**
