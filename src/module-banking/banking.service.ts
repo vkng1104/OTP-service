@@ -13,8 +13,8 @@ import { TransactionHistoryEntity } from "./entity/transaction-history.entity";
 import {
   AccountBalanceDto,
   CreateAccountBalanceRequest,
-  ListAccountsRequest,
-  ListAccountsResponse,
+  ListAccountBalancesRequest,
+  ListAccountBalancesResponse,
   ListTransactionsRequest,
   TransactionHistoryDto,
   TransactionHistoryListDto,
@@ -91,22 +91,22 @@ export class BankingService {
 
   async listAccounts(
     user_id: string,
-    request: ListAccountsRequest,
-  ): Promise<ListAccountsResponse> {
+    request: ListAccountBalancesRequest,
+  ): Promise<ListAccountBalancesResponse> {
     const queryBuilder = this.accountBalanceRepository
       .createQueryBuilder("account")
       .where("account.user_id = :user_id", { user_id })
       .andWhere("account.deleted_at IS NULL");
 
-    if (request.currency) {
+    if (request.filter.currency) {
       queryBuilder.andWhere("account.currency = :currency", {
-        currency: request.currency,
+        currency: request.filter.currency,
       });
     }
 
-    if (request.search) {
+    if (request.filter.search) {
       queryBuilder.andWhere("account.currency ILIKE :search", {
-        search: `%${request.search}%`,
+        search: `%${request.filter.search}%`,
       });
     }
 
@@ -116,7 +116,7 @@ export class BankingService {
       .take(request.limit())
       .getManyAndCount();
 
-    return new ListAccountsResponse(
+    return new ListAccountBalancesResponse(
       count,
       accounts.map((account) => plainToInstance(AccountBalanceDto, account)),
     );
@@ -232,15 +232,15 @@ export class BankingService {
       .createQueryBuilder("transaction")
       .where("transaction.user_id = :user_id", { user_id });
 
-    if (request.currency) {
+    if (request.filter.currency) {
       queryBuilder.andWhere("transaction.currency = :currency", {
-        currency: request.currency,
+        currency: request.filter.currency,
       });
     }
 
-    if (request.search) {
+    if (request.filter.search) {
       queryBuilder.andWhere("transaction.description ILIKE :search", {
-        search: `%${request.search}%`,
+        search: `%${request.filter.search}%`,
       });
     }
 
