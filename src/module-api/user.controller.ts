@@ -13,7 +13,7 @@ import {
 import { JwtAuthGuard, Roles, RolesGuard } from "~/module-auth";
 import { BankingService } from "~/module-banking/banking.service";
 import { AccountStatus, Currency } from "~/module-banking/constant";
-import { CreateAccountBalanceRequest } from "~/module-banking/model/request/create-account.dto";
+import { CreateAccountBalanceRequest } from "~/module-banking/model/request/create-account-balance-request.dto";
 import { OtpService } from "~/module-otp/otp.service";
 import { UserRole } from "~/module-user/constant";
 import {

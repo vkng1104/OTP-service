@@ -10,16 +10,16 @@ import { DataSource, IsNull, Repository } from "typeorm";
 import { AccountStatus, Currency, TransactionType } from "./constant";
 import { AccountBalanceEntity } from "./entity/account-balance.entity";
 import { TransactionHistoryEntity } from "./entity/transaction-history.entity";
-import { CreateAccountBalanceRequest } from "./model/request/create-account.dto";
-import { ListAccountsRequest } from "./model/request/list-accounts.request";
-import { ListTransactionsRequest } from "./model/request/list-transactions.request";
-import { TransferMoneyDto } from "./model/request/transfer-money.dto";
 import {
   AccountBalanceDto,
+  CreateAccountBalanceRequest,
+  ListAccountsRequest,
   ListAccountsResponse,
+  ListTransactionsRequest,
   TransactionHistoryDto,
   TransactionHistoryListDto,
-} from "./model/response";
+  TransferMoneyDto,
+} from "./model";
 
 @Injectable()
 export class BankingService {

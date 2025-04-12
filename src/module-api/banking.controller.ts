@@ -13,13 +13,13 @@ import {
 import { JwtAuthGuard, Roles, RolesGuard } from "~/module-auth";
 import { BankingService } from "~/module-banking/banking.service";
 import { Currency } from "~/module-banking/constant";
-import { CreateAccountBalanceRequest } from "~/module-banking/model/request/create-account.dto";
-import { ListTransactionsRequest } from "~/module-banking/model/request/list-transactions.request";
-import { TransferMoneyDto } from "~/module-banking/model/request/transfer-money.dto";
 import {
   AccountBalanceDto,
+  CreateAccountBalanceRequest,
+  ListTransactionsRequest,
   TransactionHistoryListDto,
-} from "~/module-banking/model/response";
+  TransferMoneyDto,
+} from "~/module-banking/model";
 import { UserRole } from "~/module-user/constant";
 
 @Controller("api/banking")
