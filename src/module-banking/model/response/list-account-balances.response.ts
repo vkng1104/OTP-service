@@ -2,7 +2,7 @@ import { PageableResponse } from "~/module-common/model/response/pageable-respon
 
 import { AccountBalanceDto } from "../account-balance.dto";
 
-export class ListAccountsResponse extends PageableResponse<AccountBalanceDto> {
+export class ListAccountBalancesResponse extends PageableResponse<AccountBalanceDto> {
   constructor(count: number, data: AccountBalanceDto[]) {
     super(count, data);
   }

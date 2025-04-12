@@ -16,6 +16,8 @@ import { Currency } from "~/module-banking/constant";
 import {
   AccountBalanceDto,
   CreateAccountBalanceRequest,
+  ListAccountBalancesRequest,
+  ListAccountBalancesResponse,
   ListTransactionsRequest,
   TransactionHistoryListDto,
   TransferMoneyDto,
@@ -29,7 +31,7 @@ export class BankingController {
   /**
    * Creates a new bank account for a user
    */
-  @Post("account/create")
+  @Post("account-balance/create")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.USER)
   @UsePipes(new ValidationPipe({ transform: true }))
@@ -43,10 +45,21 @@ export class BankingController {
     );
   }
 
+  @Post("account-balance/list")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.USER)
+  @UsePipes(new ValidationPipe({ transform: true }))
+  async getAccountBalances(
+    @Body() request: ListAccountBalancesRequest,
+    @Request() req,
+  ): Promise<ListAccountBalancesResponse> {
+    return await this.bankingService.listAccounts(req.user.id, request);
+  }
+
   /**
    * Retrieves account balance for a user and currency
    */
-  @Get("account/balance")
+  @Get("account-balance")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.USER)
   async getAccountBalance(
