@@ -3,16 +3,21 @@ import { ConfigModule } from "@nestjs/config";
 import { TypeOrmModule } from "@nestjs/typeorm";
 
 import { AuthController } from "./module-api/auth.controller";
+import { BankingController } from "./module-api/banking.controller";
 import { InternalController } from "./module-api/internal.controller";
 import { OtpController } from "./module-api/otp.controller";
 import { UserController } from "./module-api/user.controller";
 import { JwtAuthModule } from "./module-auth/jwt-auth.module";
+import { BankingModule } from "./module-banking/banking.module";
+import { AccountBalanceEntity } from "./module-banking/entity/account-balance.entity";
+import { TransactionHistoryEntity } from "./module-banking/entity/transaction-history.entity";
 import { OtpModule } from "./module-otp/otp.module";
 import { AuthProviderEntity } from "./module-user/entity/auth-provider.entity";
 import { UserEntity } from "./module-user/entity/user.entity";
 import { UserKeyEntity } from "./module-user/entity/user-key.entity";
 import { UserOtpIndexCountEntity } from "./module-user/entity/user-otp-index-count.entity";
 import { UserModule } from "./module-user/user.module";
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -28,6 +33,8 @@ import { UserModule } from "./module-user/user.module";
         AuthProviderEntity,
         UserKeyEntity,
         UserOtpIndexCountEntity,
+        AccountBalanceEntity,
+        TransactionHistoryEntity,
       ], // Register all entities
       synchronize: false, // Use migrations instead of auto-sync
       migrationsRun: true, // Run migrations automatically
@@ -35,12 +42,14 @@ import { UserModule } from "./module-user/user.module";
     JwtAuthModule,
     UserModule,
     OtpModule,
+    BankingModule,
   ],
   controllers: [
     OtpController,
     UserController,
     InternalController,
     AuthController,
+    BankingController,
   ],
 })
 export class AppModule {}

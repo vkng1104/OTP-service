@@ -13,7 +13,7 @@ import { IsNull, Repository } from "typeorm";
 import { PageableResponse } from "~/module-common/model/response/pageable-response.dto";
 
 import { AuthProviderService } from "./auth-provider.service";
-import { AuthenticationType } from "./constant";
+import { AuthenticationType, UserStatus } from "./constant";
 import { AuthProviderEntity } from "./entity/auth-provider.entity";
 import { UserEntity } from "./entity/user.entity";
 import { UserKeyEntity } from "./entity/user-key.entity";
@@ -67,7 +67,10 @@ export class UserService {
     const user = await this.userRepository.manager.transaction(
       async (transactionalEntityManager) => {
         // Create user
-        const data = this.userRepository.create(request);
+        const data = this.userRepository.create({
+          ...request,
+          status: UserStatus.ACTIVE, // TODO: will add a verification process
+        });
         const user = await transactionalEntityManager.save(data);
 
         // Generate and store the user's key

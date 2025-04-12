@@ -2,6 +2,8 @@ import { Column, Entity } from "typeorm";
 
 import { BaseEntity } from "~/module-common/entity/base.entity";
 
+import { UserStatus } from "../constant";
+
 @Entity({ name: "users" }) // Maps to "users" table
 export class UserEntity extends BaseEntity {
   @Column({ type: "text", unique: true })
@@ -13,8 +15,8 @@ export class UserEntity extends BaseEntity {
   @Column({ type: "text" })
   role: string;
 
-  @Column({ type: "text" })
-  status: string;
+  @Column({ type: "enum", enum: UserStatus })
+  status: UserStatus;
 
   @Column({ type: "text", nullable: true })
   phone: string;

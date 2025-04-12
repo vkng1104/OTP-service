@@ -9,11 +9,7 @@ import {
   MinLength,
 } from "class-validator";
 
-import {
-  AuthenticationType,
-  UserRole,
-  UserStatus,
-} from "~/module-user/constant";
+import { AuthenticationType, UserRole } from "~/module-user/constant";
 
 export class CreateUserRequest {
   @IsNotEmpty()
@@ -36,12 +32,8 @@ export class CreateUserRequest {
   role: UserRole;
 
   @IsNotEmpty()
-  @IsEnum(UserStatus, { message: "Invalid status type." })
-  status: UserStatus;
-
-  @IsOptional()
   @IsEmail({}, { message: "Invalid email format." })
-  email?: string;
+  email: string;
 
   @IsOptional()
   @Matches(/^\+?[1-9]\d{1,14}$/, {
