@@ -11,6 +11,9 @@ import {
 } from "@nestjs/common";
 
 import { JwtAuthGuard, Roles, RolesGuard } from "~/module-auth";
+import { BankingService } from "~/module-banking/banking.service";
+import { AccountStatus, Currency } from "~/module-banking/constant";
+import { CreateAccountBalanceRequest } from "~/module-banking/model/request/create-account-balance-request.dto";
 import { OtpService } from "~/module-otp/otp.service";
 import { UserRole } from "~/module-user/constant";
 import {
@@ -26,10 +29,11 @@ export class UserController {
   constructor(
     private readonly userService: UserService,
     private readonly otpService: OtpService,
+    private readonly bankingService: BankingService,
   ) {}
 
   /**
-   * Creates a new user
+   * Creates a new user and account balance for the user
    */
   @Post("create")
   async createUser(@Body() request: CreateUserRequest): Promise<UserDto> {
@@ -38,6 +42,13 @@ export class UserController {
     try {
       // Create user and related records in a transaction
       user = await this.userService.createUser(request);
+
+      // Create account balance for the user
+      await this.bankingService.createAccount(user.id, {
+        currency: Currency.USD,
+        initial_balance: 1000,
+        status: AccountStatus.ACTIVE,
+      } as CreateAccountBalanceRequest);
 
       // External blockchain registration
       await this.otpService.registerUser(user.id, {
@@ -49,6 +60,7 @@ export class UserController {
       // Cleanup if OTP registration fails
       if (user?.id) {
         await this.userService.deleteUserCascade(user.id);
+        await this.bankingService.deleteUserBankingRecords(user.id);
       }
 
       throw error;
