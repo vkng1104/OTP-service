@@ -238,6 +238,15 @@ export class BankingService {
       });
     }
 
+    if (request.filter.transaction_type) {
+      queryBuilder.andWhere(
+        "transaction.transaction_type = :transaction_type",
+        {
+          transaction_type: request.filter.transaction_type,
+        },
+      );
+    }
+
     if (request.filter.search) {
       queryBuilder.andWhere("transaction.description ILIKE :search", {
         search: `%${request.filter.search}%`,
