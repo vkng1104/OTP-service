@@ -9,7 +9,7 @@ export class HistoryTransactionFilter {
 
   @IsOptional()
   @IsString()
-  search?: string;
+  search?: string; // search by description
 
   @IsOptional()
   @IsString()
