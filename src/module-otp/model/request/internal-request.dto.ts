@@ -1,4 +1,4 @@
-import { IsArray, IsNotEmpty, IsString } from "class-validator";
+import { IsNotEmpty, IsString } from "class-validator";
 
 export class GrantRoleRequest {
   @IsString()
@@ -47,7 +47,7 @@ export class FundUserWalletRequest {
 }
 
 export class ResetManyOtpsRequest {
-  @IsArray()
-  @IsString({ each: true })
-  user_ids: string[];
+  @IsString()
+  @IsNotEmpty()
+  user_id: string;
 }

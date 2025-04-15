@@ -5,6 +5,7 @@ export enum AuthenticationType {
   PASSWORD = "password",
   EXTERNAL_WALLET = "external_wallet",
   BIOMETRIC = "biometric",
+  PIN = "pin",
 }
 
 export enum UserStatus {

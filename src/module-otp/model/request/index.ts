@@ -1,7 +1,19 @@
 export * from "./internal-request.dto";
 
-import { IsNotEmpty, IsNumber, IsOptional, IsString } from "class-validator";
+import {
+  IsEnum,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+} from "class-validator";
+
+import { AuthenticationType } from "~/module-user/constant";
 export class OtpGeneratedRequest {
+  @IsEnum(AuthenticationType)
+  @IsNotEmpty()
+  provider: AuthenticationType;
+
   @IsString()
   @IsNotEmpty()
   provider_id: string;
@@ -12,12 +24,17 @@ export class OtpGeneratedRequest {
 }
 
 export class OtpRegisterRequest {
+  @IsEnum(AuthenticationType)
+  @IsNotEmpty()
+  provider: AuthenticationType;
+
   @IsString()
   @IsNotEmpty()
   provider_id: string;
 }
 
 export type OtpWindowUpdateRequest = {
+  provider: AuthenticationType;
   user_id: string;
   start_time: number;
   end_time: number;
