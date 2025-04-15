@@ -58,10 +58,12 @@ export class AuthProviderService {
             provider_id: hashedProviderId,
           });
 
+          authProvider = await transactionalEntityManager.save(authProvider);
+
           // Create user OTP index count
           await this.userOtpIndexCountService.create(user_id, authProvider.id);
 
-          return await transactionalEntityManager.save(authProvider);
+          return authProvider;
         },
       );
 

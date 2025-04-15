@@ -82,9 +82,6 @@ export class UserService {
           request.provider_id || "", // Can be OAuth ID, password hash, etc.
         );
 
-        // Create user OTP index count
-        await this.userOtpIndexCountService.create(user.id, authProvider.id);
-
         // Update user active_auth_provider_id
         user.active_auth_provider_id = authProvider.id;
         return await transactionalEntityManager.save(user);
