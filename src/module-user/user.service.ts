@@ -75,15 +75,15 @@ export class UserService {
         // Generate and store the user's key
         await this.userKeyService.generateAndStoreKeys(user.id);
 
-        // Create user OTP index count
-        await this.userOtpIndexCountService.insert(user.id);
-
         // Create auth provider
         const authProvider = await this.authProviderService.create(
           user.id,
           request.provider, // This must be one of AuthenticationType enum values
           request.provider_id || "", // Can be OAuth ID, password hash, etc.
         );
+
+        // Create user OTP index count
+        await this.userOtpIndexCountService.create(user.id, authProvider.id);
 
         // Update user active_auth_provider_id
         user.active_auth_provider_id = authProvider.id;
@@ -342,7 +342,7 @@ export class UserService {
 
     if (!user) throw new NotFoundException(`User with ID ${user_id} not found`);
 
-    const authProvider = await this.authProviderService.byProviderId(
+    const authProvider = await this.authProviderService.byProviderIdAndUserId(
       auth_provider_id,
       user_id,
     );

@@ -156,7 +156,15 @@ export class OtpService {
     const { username, secret_key } =
       await this.userService.getSensitiveUserDetails(user_id);
 
-    const otp_index = await this.userOtpIndexCountService.getOtpIndex(user_id);
+    const authProvider = await this.authProviderService.byProviderAndUserId(
+      provider,
+      user_id,
+    );
+
+    const otp_index = await this.userOtpIndexCountService.getOtpIndex(
+      user_id,
+      authProvider.id,
+    );
 
     const currentTimeInSeconds = Math.floor(Date.now() / 1000);
     const endTimeInSeconds = currentTimeInSeconds + duration;
@@ -384,6 +392,16 @@ export class OtpService {
       );
     }
 
+    const authProvider = await this.authProviderService.byProviderAndUserId(
+      cachedValue.provider,
+      user_id,
+    );
+
+    const otp_index = await this.userOtpIndexCountService.getOtpIndex(
+      user_id,
+      authProvider.id,
+    );
+
     const request: OTPVerification = {
       username,
       service: this.servicePublicKey,
@@ -392,8 +410,6 @@ export class OtpService {
     };
 
     const signature = await this.getSignedTypedData("verify", request, signer);
-
-    const otp_index = await this.userOtpIndexCountService.getOtpIndex(user_id);
 
     try {
       // Interact with the smart contract to verify the OTP
@@ -405,7 +421,10 @@ export class OtpService {
       );
 
       // update otp index after successful verification
-      await this.userOtpIndexCountService.incrementOtpIndex(user_id);
+      await this.userOtpIndexCountService.incrementOtpIndex(
+        user_id,
+        authProvider.id,
+      );
 
       return {
         success: true,

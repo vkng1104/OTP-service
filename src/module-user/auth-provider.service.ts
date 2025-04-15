@@ -6,12 +6,15 @@ import { IsNull, Repository } from "typeorm";
 
 import { AuthenticationType } from "./constant";
 import { AuthProviderEntity } from "./entity/auth-provider.entity";
+import { UserOtpIndexCountEntity } from "./entity/user-otp-index-count.entity";
 import { AuthProviderDto } from "./model/auth-provider.dto";
+import { UserOtpIndexCountService } from "./user-otp-index-count.service";
 @Injectable()
 export class AuthProviderService {
   constructor(
     @InjectRepository(AuthProviderEntity)
     private readonly authProviderRepository: Repository<AuthProviderEntity>,
+    private readonly userOtpIndexCountService: UserOtpIndexCountService,
   ) {}
 
   /**
@@ -46,36 +49,66 @@ export class AuthProviderService {
       );
     }
 
-    authProvider = this.authProviderRepository.create({
-      user_id,
-      provider,
-      provider_id: hashedProviderId,
-    });
-
     const savedAuthProvider =
-      await this.authProviderRepository.save(authProvider);
+      await this.authProviderRepository.manager.transaction(
+        async (transactionalEntityManager) => {
+          authProvider = transactionalEntityManager.create(AuthProviderEntity, {
+            user_id,
+            provider,
+            provider_id: hashedProviderId,
+          });
+
+          // Create user OTP index count
+          await this.userOtpIndexCountService.create(user_id, authProvider.id);
+
+          return await transactionalEntityManager.save(authProvider);
+        },
+      );
 
     return plainToInstance(AuthProviderDto, savedAuthProvider);
   }
 
   /**
-   * Deletes an auth provider for a user.
+   * Hard delete an auth provider for a user and all related data (OTP index count).
    * @param user_id The user's UUID.
    * @param provider The authentication provider (e.g., "password", "google", "wallet").
    * @returns void
    */
-  async deleteAuthProvider(
+  async deleteAuthProviderCascade(
     user_id: string,
     provider: AuthenticationType,
   ): Promise<void> {
-    const result = await this.authProviderRepository.update(
-      { user_id, provider, deleted_at: IsNull() },
-      { deleted_at: new Date() },
-    );
+    const authProvider = await this.byProviderAndUserId(provider, user_id);
 
-    if (result.affected === 0) {
-      throw new HttpException("Auth provider not found", HttpStatus.NOT_FOUND);
-    }
+    await this.authProviderRepository.manager.transaction(
+      async (transactionalEntityManager) => {
+        const providerResult = await transactionalEntityManager.delete(
+          AuthProviderEntity,
+          {
+            user_id,
+            provider,
+            deleted_at: IsNull(),
+          },
+        );
+
+        const otpIndexCountResult = await transactionalEntityManager.delete(
+          UserOtpIndexCountEntity,
+          {
+            user_id,
+            auth_provider_id: authProvider.id,
+            deleted_at: IsNull(),
+          },
+        );
+
+        const allDeleted =
+          (providerResult.affected ?? 0) > 0 &&
+          (otpIndexCountResult.affected ?? 0) > 0;
+
+        if (!allDeleted) {
+          throw new Error("Failed to delete all user-related entities");
+        }
+      },
+    );
   }
 
   /**
@@ -131,12 +164,31 @@ export class AuthProviderService {
    * @param user_id The user's UUID.
    * @returns The auth provider.
    */
-  async byProviderId(
+  async byProviderIdAndUserId(
     provider_id: string,
     user_id: string,
   ): Promise<AuthProviderDto> {
     const authProvider = await this.authProviderRepository.findOne({
       where: { id: provider_id, user_id, deleted_at: IsNull() },
+    });
+    if (!authProvider) {
+      throw new HttpException("Auth provider not found", HttpStatus.NOT_FOUND);
+    }
+    return plainToInstance(AuthProviderDto, authProvider);
+  }
+
+  /**
+   * Finds an auth provider for a user and provider. Throws an error if not found.
+   * @param provider The provider (e.g., "password", "google", "wallet").
+   * @param user_id The user's UUID.
+   * @returns The auth provider.
+   */
+  async byProviderAndUserId(
+    provider: AuthenticationType,
+    user_id: string,
+  ): Promise<AuthProviderDto> {
+    const authProvider = await this.authProviderRepository.findOne({
+      where: { provider, user_id, deleted_at: IsNull() },
     });
     if (!authProvider) {
       throw new HttpException("Auth provider not found", HttpStatus.NOT_FOUND);

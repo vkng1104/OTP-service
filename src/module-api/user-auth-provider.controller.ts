@@ -62,7 +62,7 @@ export class UserAuthProviderController {
     } catch (error) {
       // Cleanup if OTP registration fails
       if (authProvider?.user_id) {
-        await this.authProviderService.deleteAuthProvider(
+        await this.authProviderService.deleteAuthProviderCascade(
           authProvider.user_id,
           request.provider,
         );
