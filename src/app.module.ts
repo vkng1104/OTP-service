@@ -2,11 +2,14 @@ import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { TypeOrmModule } from "@nestjs/typeorm";
 
-import { AuthController } from "./module-api/auth.controller";
-import { BankingController } from "./module-api/banking.controller";
-import { InternalController } from "./module-api/internal.controller";
-import { OtpController } from "./module-api/otp.controller";
-import { UserController } from "./module-api/user.controller";
+import {
+  AuthController,
+  BankingController,
+  InternalController,
+  OtpController,
+  UserAuthProviderController,
+  UserController,
+} from "./module-api";
 import { JwtAuthModule } from "./module-auth/jwt-auth.module";
 import { BankingModule } from "./module-banking/banking.module";
 import { AccountBalanceEntity } from "./module-banking/entity/account-balance.entity";
@@ -17,7 +20,6 @@ import { UserEntity } from "./module-user/entity/user.entity";
 import { UserKeyEntity } from "./module-user/entity/user-key.entity";
 import { UserOtpIndexCountEntity } from "./module-user/entity/user-otp-index-count.entity";
 import { UserModule } from "./module-user/user.module";
-
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -50,6 +52,7 @@ import { UserModule } from "./module-user/user.module";
     InternalController,
     AuthController,
     BankingController,
+    UserAuthProviderController,
   ],
 })
 export class AppModule {}

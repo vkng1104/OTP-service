@@ -6,14 +6,13 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import * as bcrypt from "bcrypt";
 import { plainToInstance } from "class-transformer";
 import { IsNull, Repository } from "typeorm";
 
 import { PageableResponse } from "~/module-common/model/response/pageable-response.dto";
 
 import { AuthProviderService } from "./auth-provider.service";
-import { AuthenticationType, UserStatus } from "./constant";
+import { UserStatus } from "./constant";
 import { AuthProviderEntity } from "./entity/auth-provider.entity";
 import { UserEntity } from "./entity/user.entity";
 import { UserKeyEntity } from "./entity/user-key.entity";
@@ -76,20 +75,11 @@ export class UserService {
         // Generate and store the user's key
         await this.userKeyService.generateAndStoreKeys(user.id);
 
-        // Create user OTP index count
-        await this.userOtpIndexCountService.insert(user.id);
-
-        let providerId = request.provider_id || "";
-        if (request.provider === AuthenticationType.PASSWORD) {
-          // Hash the password
-          providerId = await bcrypt.hash(request.provider_id, 10);
-        }
-
         // Create auth provider
-        const authProvider = await this.authProviderService.upsertAuthProvider(
+        const authProvider = await this.authProviderService.create(
           user.id,
           request.provider, // This must be one of AuthenticationType enum values
-          providerId, // Can be OAuth ID, password hash, etc.
+          request.provider_id || "", // Can be OAuth ID, password hash, etc.
         );
 
         // Update user active_auth_provider_id
@@ -330,6 +320,34 @@ export class UserService {
       public_key: user.public_key,
       secret_key: userSk,
     };
+  }
+
+  /**
+   * Sets the default auth provider for a user.
+   * @param user_id The UUID of the user.
+   * @param auth_provider_id The UUID of the auth provider.
+   * @returns A Promise resolving to a UserDto.
+   * @throws NotFoundException if the user does not exist.
+   */
+  async setDefaultAuthProvider(
+    user_id: string,
+    auth_provider_id: string,
+  ): Promise<UserDto> {
+    const user = await this.userRepository.findOne({
+      where: { id: user_id, deleted_at: IsNull() },
+    });
+
+    if (!user) throw new NotFoundException(`User with ID ${user_id} not found`);
+
+    const authProvider = await this.authProviderService.byProviderIdAndUserId(
+      auth_provider_id,
+      user_id,
+    );
+
+    user.active_auth_provider_id = authProvider.id;
+    await this.userRepository.save(user);
+
+    return this.getUserDetails(user_id);
   }
 
   /**

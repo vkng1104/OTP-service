@@ -15,6 +15,6 @@ export interface OtpGeneratedResponse extends BlockchainBaseResponse<OtpView> {}
 export interface BlockchainBaseResponse<T = unknown> {
   success: boolean;
   message: string;
-  txnLogUrl: string;
+  txnLogUrls: string[];
   data?: T;
 }

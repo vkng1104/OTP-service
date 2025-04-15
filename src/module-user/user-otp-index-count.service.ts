@@ -12,30 +12,39 @@ export class UserOtpIndexCountService {
   ) {}
 
   /**
-   * Insert a new user OTP index count record.
-   * @param userId The user ID.
+   * Create a new user OTP index count record.
+   * @param user_id The user ID.
+   * @param auth_provider_id The auth provider ID.
    * @returns The created user OTP index count record.
    */
-  async insert(userId: string): Promise<UserOtpIndexCountEntity> {
+  async create(
+    user_id: string,
+    auth_provider_id: string,
+  ): Promise<UserOtpIndexCountEntity> {
     const userOtpIndexCount = this.userOtpIndexCountRepository.create({
-      user_id: userId,
+      user_id,
+      auth_provider_id,
     });
     return await this.userOtpIndexCountRepository.save(userOtpIndexCount);
   }
 
   /**
    * Get the current OTP index for a user.
-   * @param userId The user ID.
+   * @param user_id The user ID.
+   * @param auth_provider_id The auth provider ID.
    * @returns The current OTP index.
    */
-  async getOtpIndex(userId: string): Promise<number> {
+  async getOtpIndex(
+    user_id: string,
+    auth_provider_id: string,
+  ): Promise<number> {
     const userOtpIndexCount = await this.userOtpIndexCountRepository.findOne({
-      where: { user_id: userId, deleted_at: IsNull() },
+      where: { user_id, auth_provider_id, deleted_at: IsNull() },
     });
 
     if (!userOtpIndexCount) {
       throw new NotFoundException(
-        `User OTP index not found for user_id: ${userId}`,
+        `User OTP index not found for user_id: ${user_id} and auth_provider_id: ${auth_provider_id}`,
       );
     }
 
@@ -44,17 +53,21 @@ export class UserOtpIndexCountService {
 
   /**
    * Increment the OTP index for a user.
-   * @param userId The user ID.
+   * @param user_id The user ID.
+   * @param auth_provider_id The auth provider ID.
    * @returns The incremented OTP index.
    */
-  async incrementOtpIndex(userId: string): Promise<number> {
+  async incrementOtpIndex(
+    user_id: string,
+    auth_provider_id: string,
+  ): Promise<number> {
     const userOtpIndexCount = await this.userOtpIndexCountRepository.findOne({
-      where: { user_id: userId, deleted_at: IsNull() },
+      where: { user_id, auth_provider_id, deleted_at: IsNull() },
     });
 
     if (!userOtpIndexCount) {
       throw new NotFoundException(
-        `User OTP index not found for user_id: ${userId}`,
+        `User OTP index not found for user_id: ${user_id} and auth_provider_id: ${auth_provider_id}`,
       );
     }
 
@@ -67,23 +80,27 @@ export class UserOtpIndexCountService {
   /**
    * Get OTP index and increment it with pessimistic locking.
    * Throws if user record doesn't exist.
-   * @param userId The user ID.
+   * @param user_id The user ID.
+   * @param auth_provider_id The auth provider ID.
    * @returns The incremented OTP index.
    */
-  async getOtpIndexAndIncrement(userId: string): Promise<number> {
+  async getOtpIndexAndIncrement(
+    user_id: string,
+    auth_provider_id: string,
+  ): Promise<number> {
     return await this.userOtpIndexCountRepository.manager.transaction(
       async (manager) => {
         const userOtpIndexCount = await manager.findOne(
           UserOtpIndexCountEntity,
           {
-            where: { user_id: userId, deleted_at: IsNull() },
+            where: { user_id, auth_provider_id, deleted_at: IsNull() },
             lock: { mode: "pessimistic_write" }, // SELECT ... FOR UPDATE
           },
         );
 
         if (!userOtpIndexCount) {
           throw new NotFoundException(
-            `User OTP index not found for user_id: ${userId}`,
+            `User OTP index not found for user_id: ${user_id} and auth_provider_id: ${auth_provider_id}`,
           );
         }
 

@@ -13,7 +13,6 @@ import {
 import { JwtAuthGuard, Roles, RolesGuard } from "~/module-auth";
 import { BankingService } from "~/module-banking/banking.service";
 import { AccountStatus, Currency } from "~/module-banking/constant";
-import { CreateAccountBalanceRequest } from "~/module-banking/model/request/create-account-balance-request.dto";
 import { OtpService } from "~/module-otp/otp.service";
 import { UserRole } from "~/module-user/constant";
 import {
@@ -48,10 +47,11 @@ export class UserController {
         currency: Currency.USD,
         initial_balance: 1000,
         status: AccountStatus.ACTIVE,
-      } as CreateAccountBalanceRequest);
+      });
 
       // External blockchain registration
       await this.otpService.registerUser(user.id, {
+        provider: request.provider,
         provider_id: request.provider_id,
       });
 

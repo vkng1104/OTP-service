@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
 
 import { JwtAuthGuard } from "~/module-auth/guard/jwt-auth.guard";
 import { Roles } from "~/module-auth/guard/roles.decorator";
+import { RolesGuard } from "~/module-auth/guard/roles.guard";
 import {
   BlacklistUserRequest,
   FundUserWalletRequest,
@@ -18,7 +19,7 @@ export class InternalController {
   constructor(private readonly otpService: OtpService) {}
 
   @Get("user-wallet-balance/:user_wallet_address")
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.SUPER_ADMIN)
   async getUserWalletBalance(
     @Param("user_wallet_address") user_wallet_address: string,
@@ -27,7 +28,7 @@ export class InternalController {
   }
 
   @Post("refund-to-admin-wallet")
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.SUPER_ADMIN)
   async refundToAdminWallet(@Body() request: RefundToAdminWalletRequest) {
     return this.otpService.refundToAdminWallet(
@@ -38,7 +39,7 @@ export class InternalController {
   }
 
   @Post("fund-user-wallet")
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.SUPER_ADMIN)
   async fundUserWallet(@Body() request: FundUserWalletRequest) {
     return this.otpService.fundUserWallet(
@@ -48,7 +49,7 @@ export class InternalController {
   }
 
   @Get("check-role/:wallet_address/:role")
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.SUPER_ADMIN)
   async checkRole(
     @Param("wallet_address") wallet_address: string,
@@ -58,21 +59,21 @@ export class InternalController {
   }
 
   @Post("grant-role")
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.SUPER_ADMIN)
   async grantRole(@Body() request: GrantRoleRequest) {
     return this.otpService.grantRole(request.role, request.wallet_address);
   }
 
   @Post("blacklist-user")
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.SUPER_ADMIN)
   async blacklistUser(@Body() request: BlacklistUserRequest) {
     return this.otpService.blacklistUser(request.user_id);
   }
 
   @Post("remove-user-from-blacklist")
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.SUPER_ADMIN)
   async removeUserFromBlacklist(
     @Body() request: RemoveUserFromBlacklistRequest,
@@ -81,14 +82,14 @@ export class InternalController {
   }
 
   @Post("reset-many-otps")
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.SUPER_ADMIN)
   async resetManyOtps(@Body() request: ResetManyOtpsRequest) {
-    return this.otpService.resetManyOtps(request.user_ids);
+    return this.otpService.resetManyOtps(request.user_id);
   }
 
   @Get("view-otp-data/:user_id")
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.SUPER_ADMIN)
   async viewOtpData(@Param("user_id") user_id: string) {
     return this.otpService.viewOtpData(user_id);
