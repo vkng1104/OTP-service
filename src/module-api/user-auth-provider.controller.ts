@@ -15,10 +15,11 @@ import {
 import { JwtAuthGuard, Roles, RolesGuard } from "~/module-auth";
 import { OtpService } from "~/module-otp/otp.service";
 import { AuthProviderService } from "~/module-user/auth-provider.service";
-import { UserRole } from "~/module-user/constant";
+import { AuthenticationType, UserRole } from "~/module-user/constant";
 import {
   AuthProviderDto,
   CreateAuthProviderRequest,
+  SetPinRequest,
   UserDto,
 } from "~/module-user/model";
 import { UserService } from "~/module-user/user.service";
@@ -44,6 +45,12 @@ export class UserAuthProviderController {
   ): Promise<AuthProviderDto> {
     let authProvider: AuthProviderDto;
 
+    if (request.provider === AuthenticationType.PIN) {
+      throw new BadRequestException(
+        "PIN is not supported. Please use the set-pin endpoint to set a PIN.",
+      );
+    }
+
     try {
       // Create auth provider
       authProvider = await this.authProviderService.create(
@@ -61,10 +68,10 @@ export class UserAuthProviderController {
       return authProvider;
     } catch (error) {
       // Cleanup if OTP registration fails
-      if (authProvider?.user_id) {
+      if (authProvider?.id) {
         await this.authProviderService.deleteAuthProviderCascade(
+          authProvider.id,
           authProvider.user_id,
-          request.provider,
         );
       }
 
@@ -97,6 +104,49 @@ export class UserAuthProviderController {
       req.user.id,
       request.auth_provider_id,
     );
+  }
+
+  /**
+   * Sets the pin for a user device
+   */
+  @Post("set-pin")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.USER)
+  async setPin(
+    @Request() req,
+    @Body() request: SetPinRequest,
+  ): Promise<AuthProviderDto> {
+    let authProvider: AuthProviderDto;
+
+    try {
+      authProvider = await this.authProviderService.setPin(
+        req.user.id,
+        request.device_id,
+        request.pin,
+      );
+
+      // If the auth provider is new, we need to register it on the blockchain
+      if (!authProvider.updated_at) {
+        // External blockchain registration
+        await this.otpService.registerUser(authProvider.user_id, {
+          provider: AuthenticationType.PIN,
+          device_id: authProvider.device_id,
+          provider_id: request.pin,
+        });
+      }
+
+      return authProvider;
+    } catch (error) {
+      // Cleanup if OTP registration fails
+      if (authProvider?.id) {
+        await this.authProviderService.deleteAuthProviderCascade(
+          authProvider.id,
+          authProvider.user_id,
+        );
+      }
+
+      throw error;
+    }
   }
 
   /**

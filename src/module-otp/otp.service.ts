@@ -6,7 +6,6 @@ import { ethers, TypedDataDomain } from "ethers";
 
 import OTPSystemJSON from "~/artifacts/src/contracts/OTPSystem.sol/OTPSystem.json"; // Import the ABI from the JSON file
 import { AuthProviderService } from "~/module-user/auth-provider.service";
-import { AuthenticationType } from "~/module-user/constant";
 import { UserService } from "~/module-user/user.service";
 import { UserOtpIndexCountService } from "~/module-user/user-otp-index-count.service";
 
@@ -33,8 +32,9 @@ import { handleBlockchainException } from "./util/handle-exception.util";
 import { generateNumericOtpFromHash } from "./util/otp-generator.util";
 
 interface CachedOtpValue {
-  rawOtp: string;
-  provider: AuthenticationType;
+  raw_otp: string;
+  auth_provider_id: string;
+  new_commitment_value: string;
 }
 @Injectable()
 export class OtpService {
@@ -101,11 +101,13 @@ export class OtpService {
   }
 
   private getBlockchainUserId(
-    userId: string,
-    provider: AuthenticationType,
+    user_id: string,
+    auth_provider_id: string,
   ): string {
     return ethers.keccak256(
-      ethers.toUtf8Bytes(`${userId}:${this.servicePublicKey}:${provider}`),
+      ethers.toUtf8Bytes(
+        `${user_id}:${this.servicePublicKey}:${auth_provider_id}`,
+      ),
     );
   }
 
@@ -140,8 +142,9 @@ export class OtpService {
     return (
       typeof cachedValue === "object" &&
       cachedValue !== null &&
-      "rawOtp" in cachedValue &&
-      "provider" in cachedValue
+      "raw_otp" in cachedValue &&
+      "auth_provider_id" in cachedValue &&
+      "new_commitment_value" in cachedValue
     );
   }
 
@@ -150,16 +153,19 @@ export class OtpService {
     {
       provider,
       provider_id,
+      device_id,
       duration = 5 * 60, // 5 minutes
     }: OtpGeneratedRequest,
   ): Promise<OtpGeneratedResponse> {
+    const authProvider = await this.authProviderService.validatePassword(
+      user_id,
+      provider_id,
+      provider,
+      device_id,
+    );
+
     const { username, secret_key } =
       await this.userService.getSensitiveUserDetails(user_id);
-
-    const authProvider = await this.authProviderService.byProviderAndUserId(
-      provider,
-      user_id,
-    );
 
     const otp_index = await this.userOtpIndexCountService.getOtpIndex(
       user_id,
@@ -171,7 +177,7 @@ export class OtpService {
 
     const tx = await this.updateOtpWindow({
       user_id,
-      provider,
+      auth_provider_id: authProvider.id,
       start_time: currentTimeInSeconds, // epoch time
       end_time: endTimeInSeconds, // epoch time
     });
@@ -183,16 +189,18 @@ export class OtpService {
     );
     const otp = generateNumericOtpFromHash(rawOtp);
 
-    await this.cacheManager.set(`otp:${user_id}:${otp}`, {
-      rawOtp,
-      provider,
-    });
-
     const rawNextOtp = ethers.keccak256(
       ethers.toUtf8Bytes(
         `${username}:${provider_id}:${secret_key}:${otp_index + 1}`,
       ),
     );
+    const newCommitmentValue = ethers.keccak256(rawNextOtp);
+
+    await this.cacheManager.set(`otp:${user_id}:${otp}`, {
+      raw_otp: rawOtp,
+      auth_provider_id: authProvider.id,
+      new_commitment_value: newCommitmentValue,
+    });
 
     return {
       success: true,
@@ -200,7 +208,6 @@ export class OtpService {
       txnLogUrls: tx.txnLogUrls,
       data: {
         otp,
-        new_commitment_value: ethers.keccak256(rawNextOtp),
         start_time: currentTimeInSeconds,
         end_time: endTimeInSeconds,
       },
@@ -280,12 +287,23 @@ export class OtpService {
 
   async registerUser(
     user_id: string,
-    { provider, provider_id }: OtpRegisterRequest,
+    { provider, provider_id, device_id }: OtpRegisterRequest,
   ): Promise<UserRegistrationResponse> {
+    const authProvider = await this.authProviderService.validatePassword(
+      user_id,
+      provider_id,
+      provider,
+      device_id,
+    );
+
     const { username, secret_key, public_key } =
       await this.userService.getSensitiveUserDetails(user_id);
 
-    const otp_index = 1;
+    const otp_index = await this.userOtpIndexCountService.getOtpIndex(
+      user_id,
+      authProvider.id,
+    );
+
     const rawOtp = ethers.keccak256(
       ethers.toUtf8Bytes(
         `${username}:${provider_id}:${secret_key}:${otp_index}`,
@@ -312,7 +330,7 @@ export class OtpService {
       await this.fundUserWallet(public_key);
 
       const tx = await contract.registerUser(
-        this.getBlockchainUserId(user_id, provider),
+        this.getBlockchainUserId(user_id, authProvider.id),
         request,
         signature,
       );
@@ -339,13 +357,13 @@ export class OtpService {
 
   async updateOtpWindow({
     user_id,
-    provider,
+    auth_provider_id,
     start_time,
     end_time,
   }: OtpWindowUpdateRequest): Promise<OtpWindowUpdateResponse> {
     try {
       const tx = await this.contractCalledByAdmin.updateOtpWindow(
-        this.getBlockchainUserId(user_id, provider),
+        this.getBlockchainUserId(user_id, auth_provider_id),
         start_time,
         end_time,
       );
@@ -372,7 +390,7 @@ export class OtpService {
 
   async verifyOtp(
     user_id: string,
-    { otp, new_commitment_value }: OtpVerificationRequest,
+    { otp }: OtpVerificationRequest,
   ): Promise<OtpVerificationResponse> {
     const { username, secret_key } =
       await this.userService.getSensitiveUserDetails(user_id);
@@ -392,8 +410,8 @@ export class OtpService {
       );
     }
 
-    const authProvider = await this.authProviderService.byProviderAndUserId(
-      cachedValue.provider,
+    const authProvider = await this.authProviderService.byProviderIdAndUserId(
+      cachedValue.auth_provider_id,
       user_id,
     );
 
@@ -405,8 +423,8 @@ export class OtpService {
     const request: OTPVerification = {
       username,
       service: this.servicePublicKey,
-      otp: cachedValue.rawOtp,
-      newCommitmentValue: new_commitment_value,
+      otp: cachedValue.raw_otp,
+      newCommitmentValue: cachedValue.new_commitment_value,
     };
 
     const signature = await this.getSignedTypedData("verify", request, signer);
@@ -414,7 +432,7 @@ export class OtpService {
     try {
       // Interact with the smart contract to verify the OTP
       const tx = await contract.verifyOtp(
-        this.getBlockchainUserId(user_id, cachedValue.provider),
+        this.getBlockchainUserId(user_id, authProvider.id),
         otp_index,
         request,
         signature,
@@ -497,7 +515,7 @@ export class OtpService {
 
     const txs = authProviders.map((authProvider) => {
       return this.contractCalledByAdmin.blacklistUser(
-        this.getBlockchainUserId(user_id, authProvider.provider),
+        this.getBlockchainUserId(user_id, authProvider.id),
       );
     });
 
@@ -530,7 +548,7 @@ export class OtpService {
 
     const txs = authProviders.map((authProvider) => {
       return this.contractCalledByAdmin.removeFromBlacklist(
-        this.getBlockchainUserId(user_id, authProvider.provider),
+        this.getBlockchainUserId(user_id, authProvider.id),
       );
     });
 
@@ -564,7 +582,7 @@ export class OtpService {
     try {
       const tx = await this.contractCalledByAdmin.resetManyOtps(
         authProviders.map((authProvider) =>
-          this.getBlockchainUserId(user_id, authProvider.provider),
+          this.getBlockchainUserId(user_id, authProvider.id),
         ),
       );
 
@@ -596,7 +614,7 @@ export class OtpService {
       try {
         const [commitmentValue, index, startTime, endTime] =
           await this.contractCalledByAdmin.getOtpDetails(
-            this.getBlockchainUserId(user_id, authProvider.provider),
+            this.getBlockchainUserId(user_id, authProvider.id),
           );
 
         return {
