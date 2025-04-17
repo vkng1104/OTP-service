@@ -21,14 +21,7 @@ export class AuthService {
   ): Promise<UserDto> {
     const user = await this.userService.byUsernameOrEmail(usernameOrEmail);
 
-    const isPasswordValid = await this.authProviderService.validatePassword(
-      user.id,
-      password,
-    );
-
-    if (!isPasswordValid) {
-      throw new UnauthorizedException("Invalid credentials");
-    }
+    await this.authProviderService.validatePassword(user.id, password);
 
     return user;
   }

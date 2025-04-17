@@ -17,6 +17,11 @@ export class AuthProviderDto {
   user_id: string;
 
   @Expose()
+  @IsString()
+  @IsOptional()
+  device_id?: string;
+
+  @Expose()
   @IsDate()
   @IsOptional()
   created_at?: Date;

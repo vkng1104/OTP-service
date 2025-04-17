@@ -15,6 +15,10 @@ export class OtpGeneratedRequest {
   provider: AuthenticationType;
 
   @IsString()
+  @IsOptional()
+  device_id?: string;
+
+  @IsString()
   @IsNotEmpty()
   provider_id: string;
 
@@ -29,12 +33,16 @@ export class OtpRegisterRequest {
   provider: AuthenticationType;
 
   @IsString()
+  @IsOptional()
+  device_id?: string;
+
+  @IsString()
   @IsNotEmpty()
   provider_id: string;
 }
 
 export type OtpWindowUpdateRequest = {
-  provider: AuthenticationType;
+  auth_provider_id: string;
   user_id: string;
   start_time: number;
   end_time: number;
@@ -44,8 +52,4 @@ export class OtpVerificationRequest {
   @IsString()
   @IsNotEmpty()
   otp: string;
-
-  @IsString()
-  @IsNotEmpty()
-  new_commitment_value: string;
 }

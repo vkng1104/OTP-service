@@ -14,4 +14,7 @@ export class AuthProviderEntity extends BaseEntity {
 
   @Column({ type: "text", nullable: true })
   provider_id?: string; // Stores hashed password or OAuth ID
+
+  @Column({ type: "text", nullable: true })
+  device_id?: string; // Stores device ID for device-specific authentication methods like PIN
 }
