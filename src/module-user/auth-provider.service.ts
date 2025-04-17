@@ -1,4 +1,9 @@
-import { HttpException, HttpStatus, Injectable } from "@nestjs/common";
+import {
+  BadRequestException,
+  HttpException,
+  HttpStatus,
+  Injectable,
+} from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import * as bcrypt from "bcrypt";
 import { plainToInstance } from "class-transformer";
@@ -71,24 +76,84 @@ export class AuthProviderService {
   }
 
   /**
+   * Sets a PIN for a specific device
+   * @param user_id The user ID
+   * @param device_id The device identifier
+   * @param pin The 6-digit PIN
+   * @returns A promise that resolves when the PIN is set
+   */
+  async setPin(
+    user_id: string,
+    device_id: string,
+    pin: string,
+  ): Promise<AuthProviderDto> {
+    // Validate PIN format
+    if (!/^\d{6}$/.test(pin)) {
+      throw new BadRequestException("PIN must be exactly 6 digits");
+    }
+
+    // Hash the PIN
+    const hashedPin = await bcrypt.hash(pin, 10);
+
+    // Check if a PIN already exists for this device
+    let existingPin = await this.authProviderRepository.findOne({
+      where: {
+        user_id,
+        provider: AuthenticationType.PIN,
+        device_id,
+        deleted_at: IsNull(),
+      },
+    });
+
+    if (existingPin) {
+      // Update existing PIN
+      existingPin.provider_id = hashedPin;
+      existingPin = await this.authProviderRepository.save(existingPin);
+      return plainToInstance(AuthProviderDto, existingPin);
+    }
+
+    // Create new PIN auth provider
+    const newPin = this.authProviderRepository.create({
+      user_id,
+      provider: AuthenticationType.PIN,
+      provider_id: hashedPin,
+      device_id,
+    });
+
+    const savedAuthProvider =
+      await this.authProviderRepository.manager.transaction(
+        async (transactionalEntityManager) => {
+          const savedPin = await transactionalEntityManager.save(newPin);
+
+          await this.userOtpIndexCountService.create(user_id, savedPin.id);
+
+          return savedPin;
+        },
+      );
+
+    return plainToInstance(AuthProviderDto, savedAuthProvider);
+  }
+
+  /**
    * Hard delete an auth provider for a user and all related data (OTP index count).
+   * @param auth_provider_id The auth provider's UUID.
    * @param user_id The user's UUID.
-   * @param provider The authentication provider (e.g., "password", "google", "wallet").
    * @returns void
    */
   async deleteAuthProviderCascade(
+    auth_provider_id: string,
     user_id: string,
-    provider: AuthenticationType,
   ): Promise<void> {
-    const authProvider = await this.byProviderAndUserId(provider, user_id);
+    // Check if the auth provider exists
+    await this.byProviderIdAndUserId(auth_provider_id, user_id);
 
     await this.authProviderRepository.manager.transaction(
       async (transactionalEntityManager) => {
         const providerResult = await transactionalEntityManager.delete(
           AuthProviderEntity,
           {
+            id: auth_provider_id,
             user_id,
-            provider,
             deleted_at: IsNull(),
           },
         );
@@ -97,7 +162,7 @@ export class AuthProviderService {
           UserOtpIndexCountEntity,
           {
             user_id,
-            auth_provider_id: authProvider.id,
+            auth_provider_id: auth_provider_id,
             deleted_at: IsNull(),
           },
         );
@@ -119,20 +184,37 @@ export class AuthProviderService {
    * @param password The password to validate.
    * @returns true if the password is valid, false otherwise.
    */
-  async validatePassword(user_id: string, password: string): Promise<boolean> {
+  async validatePassword(
+    user_id: string,
+    password: string,
+    provider: AuthenticationType = AuthenticationType.PASSWORD,
+    device_id?: string,
+  ): Promise<AuthProviderDto> {
+    this.preValidateProvider(provider, device_id);
+
     const authProvider = await this.authProviderRepository.findOne({
       where: {
         user_id,
-        provider: AuthenticationType.PASSWORD,
+        provider,
+        device_id: provider === AuthenticationType.PIN ? device_id : null,
         deleted_at: IsNull(),
       },
     });
 
     if (!authProvider) {
-      return false;
+      throw new HttpException("Auth provider not found", HttpStatus.NOT_FOUND);
     }
 
-    return await bcrypt.compare(password, authProvider.provider_id);
+    const isPasswordValid = await bcrypt.compare(
+      password,
+      authProvider.provider_id,
+    );
+
+    if (!isPasswordValid) {
+      throw new HttpException("Invalid password", HttpStatus.UNAUTHORIZED);
+    }
+
+    return plainToInstance(AuthProviderDto, authProvider);
   }
 
   /**
@@ -179,6 +261,28 @@ export class AuthProviderService {
     return plainToInstance(AuthProviderDto, authProvider);
   }
 
+  private preValidateProvider(
+    provider: AuthenticationType,
+    device_id?: string,
+  ): void {
+    const supportedProviders = [
+      AuthenticationType.PIN,
+      AuthenticationType.PASSWORD,
+    ];
+    if (!supportedProviders.includes(provider)) {
+      throw new HttpException(
+        "Provider is not supported for validation",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    if (provider === AuthenticationType.PIN && !device_id) {
+      throw new HttpException(
+        "Device ID is required for PIN authentication",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
   /**
    * Finds an auth provider for a user and provider. Throws an error if not found.
    * @param provider The provider (e.g., "password", "google", "wallet").
@@ -188,13 +292,18 @@ export class AuthProviderService {
   async byProviderAndUserId(
     provider: AuthenticationType,
     user_id: string,
+    device_id?: string,
   ): Promise<AuthProviderDto> {
+    this.preValidateProvider(provider, device_id);
+
     const authProvider = await this.authProviderRepository.findOne({
-      where: { provider, user_id, deleted_at: IsNull() },
+      where: { provider, user_id, device_id, deleted_at: IsNull() },
     });
+
     if (!authProvider) {
       throw new HttpException("Auth provider not found", HttpStatus.NOT_FOUND);
     }
+
     return plainToInstance(AuthProviderDto, authProvider);
   }
 
