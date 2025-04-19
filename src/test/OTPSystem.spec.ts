@@ -2,6 +2,8 @@ import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { expect } from "chai";
 import { ethers } from "hardhat";
 
+const ipfsCid = "QmS4ghgMgPXqX5fM5vVYZ8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y"; // random ipfs cid
+
 describe("OTPSystem", function () {
   async function deployOtpSystemFixture() {
     const [owner, admin, user, attacker] = await ethers.getSigners();
@@ -148,7 +150,12 @@ describe("OTPSystem", function () {
     );
     await otpSystem
       .connect(user)
-      .registerUser(userId, { username, service, commitmentValue }, signature);
+      .registerUser(
+        userId,
+        { username, service, commitmentValue },
+        signature,
+        ipfsCid,
+      );
   }
 
   describe("User Registration", function () {
@@ -178,10 +185,11 @@ describe("OTPSystem", function () {
             userId,
             { username, service, commitmentValue },
             signature,
+            ipfsCid,
           ),
       )
         .to.emit(otpSystem, "UserRegistered")
-        .withArgs(userId, user.address);
+        .withArgs(userId, user.address, ipfsCid);
 
       const userData = await otpSystem.otpRecords(userId);
       expect(userData.commitmentValue).to.equal(commitmentValue);
@@ -212,6 +220,7 @@ describe("OTPSystem", function () {
           userId,
           { username, service, commitmentValue },
           signature,
+          ipfsCid,
         );
 
       await expect(
@@ -221,6 +230,7 @@ describe("OTPSystem", function () {
             userId,
             { username, service, commitmentValue },
             signature,
+            ipfsCid,
           ),
       ).to.be.revertedWith("User already registered on this service");
     });
@@ -261,6 +271,7 @@ describe("OTPSystem", function () {
             userId,
             { username, service, commitmentValue },
             badSignature,
+            ipfsCid,
           ),
       ).to.be.revertedWith("Invalid signature for User Registration");
     });
@@ -304,7 +315,14 @@ describe("OTPSystem", function () {
 
       // Set a valid window (now to now + 60s)
       let now = await getCurrentTimestamp();
-      await otpSystem.connect(admin).updateOtpWindow(userId, now, now + 60);
+
+      await expect(
+        otpSystem
+          .connect(admin)
+          .updateOtpWindow(userId, now, now + 60, ipfsCid),
+      )
+        .to.emit(otpSystem, "OtpActivated")
+        .withArgs(userId, admin.address, ipfsCid);
 
       // 🔹 Sign the OTP verification request
       const verificationSignature = await signOtpVerification(
@@ -325,10 +343,11 @@ describe("OTPSystem", function () {
             index - 1,
             { username, service, otp, newCommitmentValue },
             verificationSignature,
+            ipfsCid,
           ),
       )
         .to.emit(otpSystem, "OtpVerified")
-        .withArgs(userId, user.address, otp, true);
+        .withArgs(userId, user.address, otp, true, ipfsCid);
 
       // 🔹 Ensure the commitment is updated correctly
       const updatedData = await otpSystem.otpRecords(userId);
@@ -348,7 +367,9 @@ describe("OTPSystem", function () {
 
       // Set a valid window (now to now + 60s)
       now = await getCurrentTimestamp();
-      await otpSystem.connect(admin).updateOtpWindow(userId, now, now + 60);
+      await otpSystem
+        .connect(admin)
+        .updateOtpWindow(userId, now, now + 60, ipfsCid);
 
       // 🔹 Sign the OTP verification request
       const secondVerificationSignature = await signOtpVerification(
@@ -372,10 +393,11 @@ describe("OTPSystem", function () {
             newCommitmentValue: secondNewCommitmentValue,
           },
           secondVerificationSignature,
+          ipfsCid,
         ),
       )
         .to.emit(otpSystem, "OtpVerified")
-        .withArgs(userId, user.address, nextOtp, true);
+        .withArgs(userId, user.address, nextOtp, true, ipfsCid);
 
       // 🔹 Ensure the commitment is updated correctly
       const secondUpdatedData = await otpSystem.otpRecords(userId);
@@ -429,7 +451,9 @@ describe("OTPSystem", function () {
 
       // Set a valid window (now to now + 60s)
       const now = await getCurrentTimestamp();
-      await otpSystem.connect(admin).updateOtpWindow(userId, now, now + 60);
+      await otpSystem
+        .connect(admin)
+        .updateOtpWindow(userId, now, now + 60, ipfsCid);
 
       // 🔹 Attempt to verify with an invalid index - should fail
       await expect(
@@ -440,6 +464,7 @@ describe("OTPSystem", function () {
             2,
             { username, service, otp: invalidOtp, newCommitmentValue },
             "0x",
+            ipfsCid,
           ),
       ).to.be.revertedWith("Invalid index");
 
@@ -452,6 +477,7 @@ describe("OTPSystem", function () {
             1,
             { username, service, otp: invalidOtp, newCommitmentValue },
             "0x",
+            ipfsCid,
           ),
       ).to.be.revertedWith("OTP is invalid");
     });
@@ -493,7 +519,9 @@ describe("OTPSystem", function () {
 
       // Set a valid window (now to now + 60s)
       const now = await getCurrentTimestamp();
-      await otpSystem.connect(admin).updateOtpWindow(userId, now, now + 60);
+      await otpSystem
+        .connect(admin)
+        .updateOtpWindow(userId, now, now + 60, ipfsCid);
 
       // 🔹 Attacker (not the user) signs the OTP verification request
       const badSignature = await signOtpVerification(
@@ -514,6 +542,7 @@ describe("OTPSystem", function () {
             1,
             { username, service, otp, newCommitmentValue },
             badSignature,
+            ipfsCid,
           ),
       ).to.be.revertedWith("Invalid signature for OTP verification");
 
@@ -536,6 +565,7 @@ describe("OTPSystem", function () {
             1,
             { username, service, otp, newCommitmentValue },
             badSignatureUsername,
+            ipfsCid,
           ),
       ).to.be.revertedWith("Invalid signature for OTP verification");
     });
@@ -577,11 +607,14 @@ describe("OTPSystem", function () {
           userId,
           { username, service, commitmentValue },
           registrationSignature,
+          ipfsCid,
         );
 
       // Set a valid window (now to now + 60s)
       const now = await getCurrentTimestamp();
-      await otpSystem.connect(admin).updateOtpWindow(userId, now, now + 60);
+      await otpSystem
+        .connect(admin)
+        .updateOtpWindow(userId, now, now + 60, ipfsCid);
 
       const verificationSignature = await signOtpVerification(
         otpSystem,
@@ -600,10 +633,11 @@ describe("OTPSystem", function () {
             index - 1,
             { username, service, otp, newCommitmentValue },
             verificationSignature,
+            ipfsCid,
           ),
       )
         .to.emit(otpSystem, "OtpVerified")
-        .withArgs(userId, user.address, otp, true);
+        .withArgs(userId, user.address, otp, true, ipfsCid);
     });
 
     it("Should reject OTP if verification is attempted before startTime", async function () {
@@ -643,13 +677,14 @@ describe("OTPSystem", function () {
           userId,
           { username, service, commitmentValue },
           registrationSignature,
+          ipfsCid,
         );
 
       // Set future window (starts in 60s)
       const now = await getCurrentTimestamp();
       await otpSystem
         .connect(admin)
-        .updateOtpWindow(userId, now + 60, now + 120);
+        .updateOtpWindow(userId, now + 60, now + 120, ipfsCid);
 
       const verificationSignature = await signOtpVerification(
         otpSystem,
@@ -668,6 +703,7 @@ describe("OTPSystem", function () {
             index - 1,
             { username, service, otp, newCommitmentValue },
             verificationSignature,
+            ipfsCid,
           ),
       ).to.be.revertedWith("OTP is expired or not active");
     });
@@ -709,11 +745,14 @@ describe("OTPSystem", function () {
           userId,
           { username, service, commitmentValue },
           registrationSignature,
+          ipfsCid,
         );
 
       // Set short-lived window: now to now + 2s
       const now = await getCurrentTimestamp();
-      await otpSystem.connect(admin).updateOtpWindow(userId, now, now + 2);
+      await otpSystem
+        .connect(admin)
+        .updateOtpWindow(userId, now, now + 2, ipfsCid);
 
       const verificationSignature = await signOtpVerification(
         otpSystem,
@@ -736,6 +775,7 @@ describe("OTPSystem", function () {
             index - 1,
             { username, service, otp, newCommitmentValue },
             verificationSignature,
+            ipfsCid,
           ),
       ).to.be.revertedWith("OTP is expired or not active");
     });
@@ -750,9 +790,9 @@ describe("OTPSystem", function () {
         ethers.toUtf8Bytes("aliceemail" + user.address),
       );
 
-      await expect(otpSystem.connect(admin).blacklistUser(userId))
+      await expect(otpSystem.connect(admin).blacklistUser(userId, ipfsCid))
         .to.emit(otpSystem, "UserBlacklisted")
-        .withArgs(userId);
+        .withArgs(userId, admin.address, ipfsCid);
 
       expect(await otpSystem.blacklisted(userId)).to.be.true;
     });
@@ -765,7 +805,7 @@ describe("OTPSystem", function () {
         ethers.toUtf8Bytes("aliceemail" + user.address),
       );
 
-      await otpSystem.connect(admin).blacklistUser(userId);
+      await otpSystem.connect(admin).blacklistUser(userId, ipfsCid);
 
       await expect(
         otpSystem.connect(user).registerUser(
@@ -776,6 +816,7 @@ describe("OTPSystem", function () {
             commitmentValue: ethers.id("commitment"),
           },
           "0x",
+          ipfsCid,
         ),
       ).to.be.revertedWith("User is blacklisted");
     });
@@ -811,8 +852,8 @@ describe("OTPSystem", function () {
         commitment,
       );
 
-      await otpSystem.connect(admin).updateOtpWindow(userId1, 1, 2); // just to set dummy values
-      await otpSystem.connect(admin).updateOtpWindow(userId2, 1, 2);
+      await otpSystem.connect(admin).updateOtpWindow(userId1, 1, 2, ipfsCid); // just to set dummy values
+      await otpSystem.connect(admin).updateOtpWindow(userId2, 1, 2, ipfsCid);
 
       // Check before reset
       expect(
@@ -823,7 +864,13 @@ describe("OTPSystem", function () {
       ).to.not.equal(ethers.ZeroHash);
 
       // Reset both
-      await otpSystem.connect(admin).resetManyOtps([userId1, userId2]);
+      expect(
+        await otpSystem
+          .connect(admin)
+          .resetManyOtps([userId1, userId2], ipfsCid),
+      )
+        .to.emit(otpSystem, "OtpReset")
+        .withArgs(admin.address, ipfsCid);
 
       // Check after reset
       expect((await otpSystem.otpRecords(userId1)).commitmentValue).to.equal(
@@ -851,7 +898,9 @@ describe("OTPSystem", function () {
         commitment,
       );
 
-      await otpSystem.connect(admin).updateOtpWindow(userId, 1234, 4567);
+      await otpSystem
+        .connect(admin)
+        .updateOtpWindow(userId, 1234, 4567, ipfsCid);
 
       const data = await otpSystem.connect(admin).getOtpDetails(userId);
 

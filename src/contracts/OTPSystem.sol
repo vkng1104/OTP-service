@@ -51,18 +51,23 @@ contract OTPSystem is EIP712, AccessControl, ReentrancyGuard {
   mapping(bytes32 => bool) public blacklisted;
 
   // Event triggered when a user is registered
-  event UserRegistered(bytes32 indexed userId, address indexed user);
+  event UserRegistered(bytes32 indexed userId, address indexed user, string ipfsCid);
+  // Event triggered when OTP is activated
+  event OtpActivated(bytes32 indexed userId, address indexed admin, string ipfsCid);
   // Event triggered when an OTP is verified
   event OtpVerified(
     bytes32 indexed userId,
     address indexed user,
     bytes32 otp,
-    bool success
+    bool success,
+    string ipfsCid
   );
   // Event triggered when user is blacklisted
-  event UserBlacklisted(bytes32 indexed userId);
+  event UserBlacklisted(bytes32 indexed userId, address indexed admin, string ipfsCid);
   // Event triggered when user is removed from blacklist
-  event UserRemovedFromBlacklist(bytes32 indexed userId);
+  event UserRemovedFromBlacklist(bytes32 indexed userId, address indexed admin, string ipfsCid);
+  // Event triggered when OTP is reset
+  event OtpReset(address indexed admin, string ipfsCid);
 
   constructor() EIP712(SIGNING_DOMAIN, SIGNATURE_VERSION) {
     // Grant the deployer the admin role
@@ -139,7 +144,8 @@ contract OTPSystem is EIP712, AccessControl, ReentrancyGuard {
   function registerUser(
     bytes32 userId,
     UserRegistration calldata request,
-    bytes calldata signature
+    bytes calldata signature,
+    string calldata ipfsCid
   ) external notBlacklisted(userId) {
     require(
       _verifyUserRegistration(request, signature, msg.sender),
@@ -152,7 +158,7 @@ contract OTPSystem is EIP712, AccessControl, ReentrancyGuard {
 
     otpRecords[userId] = OTPData(request.commitmentValue, 1, 0, 0);
 
-    emit UserRegistered(userId, msg.sender);
+    emit UserRegistered(userId, msg.sender, ipfsCid);
   }
 
   /**
@@ -165,13 +171,16 @@ contract OTPSystem is EIP712, AccessControl, ReentrancyGuard {
   function updateOtpWindow(
     bytes32 userId,
     uint256 startTime,
-    uint256 endTime
+    uint256 endTime,
+    string calldata ipfsCid
   ) external onlyRole(ADMIN_ROLE) {
     require(otpRecords[userId].commitmentValue != 0, "User not registered");
     require(startTime < endTime, "Invalid time window");
 
     otpRecords[userId].startTime = startTime;
     otpRecords[userId].endTime = endTime;
+
+    emit OtpActivated(userId, msg.sender, ipfsCid);
   }
 
   /**
@@ -187,7 +196,8 @@ contract OTPSystem is EIP712, AccessControl, ReentrancyGuard {
     bytes32 userId,
     uint256 index,
     OTPVerification calldata request,
-    bytes calldata signature
+    bytes calldata signature,
+    string calldata ipfsCid
   ) external nonReentrant returns (bool success) {
     OTPData storage otpData = otpRecords[userId];
 
@@ -215,12 +225,14 @@ contract OTPSystem is EIP712, AccessControl, ReentrancyGuard {
     otpData.startTime = 0;
     otpData.endTime = 0;
 
-    emit OtpVerified(userId, msg.sender, request.otp, true);
+    emit OtpVerified(userId, msg.sender, request.otp, true, ipfsCid);
     return true;
   }
 
-  function resetOtp(bytes32 userId) external onlyRole(ADMIN_ROLE) {
+  function resetOtp(bytes32 userId, string calldata ipfsCid) external onlyRole(ADMIN_ROLE) {
     delete otpRecords[userId];
+
+    emit OtpReset(msg.sender, ipfsCid);
   }
 
   /**
@@ -229,11 +241,14 @@ contract OTPSystem is EIP712, AccessControl, ReentrancyGuard {
    * @param userIds An array of user IDs to reset.
    */
   function resetManyOtps(
-    bytes32[] calldata userIds
+    bytes32[] calldata userIds,
+    string calldata ipfsCid
   ) external onlyRole(ADMIN_ROLE) {
     for (uint i = 0; i < userIds.length; i++) {
       delete otpRecords[userIds[i]];
     }
+
+    emit OtpReset(msg.sender, ipfsCid);
   }
 
   /**
@@ -262,16 +277,20 @@ contract OTPSystem is EIP712, AccessControl, ReentrancyGuard {
     return (otp.commitmentValue, otp.index, otp.startTime, otp.endTime);
   }
 
-  function blacklistUser(bytes32 userId) external onlyRole(ADMIN_ROLE) {
+  function blacklistUser(
+    bytes32 userId,
+    string calldata ipfsCid
+  ) external onlyRole(ADMIN_ROLE) {
     blacklisted[userId] = true;
-    emit UserBlacklisted(userId);
+    emit UserBlacklisted(userId, msg.sender, ipfsCid);
   }
 
   function removeUserFromBlacklist(
-    bytes32 userId
+    bytes32 userId,
+    string calldata ipfsCid
   ) external onlyRole(ADMIN_ROLE) {
     blacklisted[userId] = false;
-    emit UserRemovedFromBlacklist(userId);
+    emit UserRemovedFromBlacklist(userId, msg.sender, ipfsCid);
   }
 
   /**
