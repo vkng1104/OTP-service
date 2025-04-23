@@ -298,4 +298,35 @@ describe("Metadata", () => {
       ]);
     });
   });
+
+  describe("fromData", () => {
+    it("should create empty metadata when no data is provided", async () => {
+      const metadata = await Metadata.fromData();
+      expect(metadata.toObject()).toEqual({});
+    });
+
+    it("should create metadata from string JSON", async () => {
+      const jsonString = '{"key": "value", "number": 42}';
+      const metadata = await Metadata.fromData(jsonString);
+      expect(metadata.toObject()).toEqual({
+        key: "value",
+        number: 42,
+      });
+    });
+
+    it("should create metadata from Blob", async () => {
+      const jsonString = '{"key": "value", "number": 42}';
+      const blob = new Blob([jsonString], { type: "application/json" });
+      const metadata = await Metadata.fromData(blob);
+      expect(metadata.toObject()).toEqual({
+        key: "value",
+        number: 42,
+      });
+    });
+
+    it("should handle null input", async () => {
+      const metadata = await Metadata.fromData(null);
+      expect(metadata.toObject()).toEqual({});
+    });
+  });
 });

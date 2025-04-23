@@ -5,6 +5,24 @@ export class Metadata {
     this.data = new Map(Object.entries(initialData));
   }
 
+  static async fromData(data?: string | Blob | JSON | null): Promise<Metadata> {
+    if (!data) return new Metadata({});
+
+    let finalData: Record<string, unknown>;
+    if (typeof data === "string") {
+      finalData = JSON.parse(data);
+    } else if (data instanceof Blob) {
+      finalData = JSON.parse(
+        new TextDecoder().decode(await data.arrayBuffer()),
+      );
+    } else if (typeof data === "object" && data !== null) {
+      finalData = Object.fromEntries(Object.entries(data));
+    } else {
+      finalData = {};
+    }
+    return new Metadata(finalData);
+  }
+
   /**
    * Removes all null and undefined values from the metadata
    * @returns A new Metadata instance with null values removed
@@ -129,6 +147,12 @@ export class Metadata {
    */
   toObject(): Record<string, unknown> {
     return Object.fromEntries(this.data);
+  }
+
+  toBlob(): Blob {
+    return new Blob([JSON.stringify(this.toObject())], {
+      type: "application/json",
+    });
   }
 
   /**
