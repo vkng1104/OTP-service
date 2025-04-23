@@ -6,6 +6,7 @@ import {
   AuthController,
   BankingController,
   InternalController,
+  IpfsController,
   OtpController,
   UserAuthProviderController,
   UserController,
@@ -14,12 +15,14 @@ import { JwtAuthModule } from "./module-auth/jwt-auth.module";
 import { BankingModule } from "./module-banking/banking.module";
 import { AccountBalanceEntity } from "./module-banking/entity/account-balance.entity";
 import { TransactionHistoryEntity } from "./module-banking/entity/transaction-history.entity";
+import { IpfsModule } from "./module-ipfs/ipfs.module";
 import { OtpModule } from "./module-otp/otp.module";
 import { AuthProviderEntity } from "./module-user/entity/auth-provider.entity";
 import { UserEntity } from "./module-user/entity/user.entity";
 import { UserKeyEntity } from "./module-user/entity/user-key.entity";
 import { UserOtpIndexCountEntity } from "./module-user/entity/user-otp-index-count.entity";
 import { UserModule } from "./module-user/user.module";
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -45,8 +48,10 @@ import { UserModule } from "./module-user/user.module";
     UserModule,
     OtpModule,
     BankingModule,
+    IpfsModule,
   ],
   controllers: [
+    IpfsController,
     OtpController,
     UserController,
     InternalController,
