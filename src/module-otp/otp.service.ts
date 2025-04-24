@@ -326,14 +326,17 @@ export class OtpService {
     );
 
     try {
-      // fund user wallet
-      await this.fundUserWallet(public_key);
+      // fund user wallet for registering
+      await this.fundUserWallet(public_key, "0.001");
 
       const tx = await contract.registerUser(
         this.getBlockchainUserId(user_id, authProvider.id),
         request,
         signature,
       );
+
+      // fund user wallet after registering
+      await this.fundUserWallet(public_key, "0.009");
 
       return {
         success: true,

@@ -14,4 +14,5 @@ export class LoginUserResponse implements TokenPayload {
   access_token: TokenInfo;
   refresh_token: TokenInfo;
   user: UserDto;
+  receipt: string;
 }

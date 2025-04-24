@@ -1,11 +1,16 @@
-import { Injectable, UnauthorizedException } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  UnauthorizedException,
+} from "@nestjs/common";
 
 import { AuthProviderService } from "~/module-user/auth-provider.service";
-import { UserDto } from "~/module-user/model";
+import { AuthenticationType } from "~/module-user/constant";
+import { AuthProviderDto, UserDto } from "~/module-user/model";
 import { UserService } from "~/module-user/user.service";
 
 import { JwtService } from "./jwt.service";
-import { TokenPayload } from "./model";
+import { LoginUserRequest, TokenPayload } from "./model";
 
 @Injectable()
 export class AuthService {
@@ -16,14 +21,45 @@ export class AuthService {
   ) {}
 
   async validateUser(
-    usernameOrEmail: string,
-    password: string,
-  ): Promise<UserDto> {
-    const user = await this.userService.byUsernameOrEmail(usernameOrEmail);
+    request: LoginUserRequest,
+  ): Promise<{ user: UserDto; auth_provider: AuthProviderDto }> {
+    const { username_or_email, password, auth_provider, device_id } = request;
 
-    await this.authProviderService.validatePassword(user.id, password);
+    const user = await this.userService.byUsernameOrEmail(username_or_email);
 
-    return user;
+    let authentication_provider: AuthProviderDto;
+    switch (auth_provider) {
+      case AuthenticationType.PASSWORD:
+        authentication_provider =
+          await this.authProviderService.validatePassword(
+            user.id,
+            password,
+            auth_provider,
+          );
+        break;
+
+      case AuthenticationType.PIN:
+        if (!device_id) {
+          throw new BadRequestException(
+            "Device ID is required for PIN authentication",
+          );
+        }
+        authentication_provider =
+          await this.authProviderService.validatePassword(
+            user.id,
+            password,
+            auth_provider,
+            device_id,
+          );
+        break;
+
+      default:
+        throw new BadRequestException(
+          `Unsupported authentication provider: ${auth_provider}`,
+        );
+    }
+
+    return { user, auth_provider: authentication_provider };
   }
 
   async login(userId: string): Promise<TokenPayload> {

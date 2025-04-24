@@ -10,7 +10,11 @@ export class LoginUserRequest {
   @IsString()
   password: string;
 
-  @IsOptional()
+  @IsNotEmpty()
   @IsEnum(AuthenticationType, { message: "Invalid authentication type." })
-  auth_provider?: AuthenticationType;
+  auth_provider: AuthenticationType;
+
+  @IsOptional()
+  @IsString()
+  device_id?: string;
 }
