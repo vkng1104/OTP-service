@@ -16,25 +16,52 @@ import {
   TokenPayload,
 } from "~/module-auth/model";
 import { RefreshTokenRequest } from "~/module-auth/model/request/refresh-token-request.dto";
+import { Metadata } from "~/module-common/model/metadata.model";
+import { IpfsService } from "~/module-ipfs/ipfs.service";
+import { PinataFile } from "~/module-ipfs/model";
+import { LoginHistoryService } from "~/module-user/login-history.service";
 import { UserService } from "~/module-user/user.service";
+
 @Controller("api/auth")
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly userService: UserService,
+    private readonly loginHistoryService: LoginHistoryService,
+    private readonly ipfsService: IpfsService,
   ) {}
 
   @Post("login")
-  async login(
-    @Body() loginUserDto: LoginUserRequest,
-  ): Promise<LoginUserResponse> {
-    const user = await this.authService.validateUser(
-      loginUserDto.username_or_email,
-      loginUserDto.password,
+  async login(@Body() request: LoginUserRequest): Promise<LoginUserResponse> {
+    const { user, auth_provider } =
+      await this.authService.validateUser(request);
+    const tokens = await this.authService.login(user.id);
+
+    const context = {
+      user_id: user.id,
+      auth_provider_id: auth_provider.id,
+      auth_provider: request.auth_provider,
+      device_id: request.device_id,
+      description: `user ${user.username} logged in on date ${new Date().toISOString()}`,
+    };
+
+    const ipfs_cid = await this.ipfsService.uploadFile(
+      new PinataFile(
+        `${user.username}-${new Date().toISOString()}.json`,
+        "application/json",
+        new Metadata(context),
+      ),
     );
+
+    await this.loginHistoryService.createLoginHistory({
+      ...context,
+      ipfs_cid,
+    });
+
     return {
-      ...(await this.authService.login(user.id)),
+      ...tokens,
       user,
+      receipt: await this.ipfsService.getUrl(ipfs_cid),
     };
   }
 

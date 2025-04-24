@@ -25,6 +25,9 @@ export class TransactionHistoryEntity extends BaseEntity {
   @Column({ type: "text" })
   transaction_type: string;
 
+  @Column({ type: "text" })
+  ipfs_cid: string;
+
   @Column({ type: "text", nullable: true })
   description: string;
 }
