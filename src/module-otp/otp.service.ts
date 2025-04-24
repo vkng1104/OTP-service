@@ -5,7 +5,11 @@ import { Cache } from "cache-manager";
 import { ethers, TypedDataDomain } from "ethers";
 
 import OTPSystemJSON from "~/artifacts/src/contracts/OTPSystem.sol/OTPSystem.json"; // Import the ABI from the JSON file
+import { Metadata } from "~/module-common/model/metadata.model";
+import { IpfsService } from "~/module-ipfs/ipfs.service";
+import { PinataFile } from "~/module-ipfs/model";
 import { AuthProviderService } from "~/module-user/auth-provider.service";
+import { AuthProviderDto } from "~/module-user/model";
 import { UserService } from "~/module-user/user.service";
 import { UserOtpIndexCountService } from "~/module-user/user-otp-index-count.service";
 
@@ -50,6 +54,7 @@ export class OtpService {
     private readonly userOtpIndexCountService: UserOtpIndexCountService,
     private readonly userService: UserService,
     private readonly authProviderService: AuthProviderService,
+    private readonly ipfsService: IpfsService,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
   ) {
     const CONTRACT_ADDRESS = this.configService.get<string>("CONTRACT_ADDRESS");
@@ -148,6 +153,37 @@ export class OtpService {
     );
   }
 
+  private async createReceipt(
+    user_id: string,
+    username: string,
+    auth_provider: AuthProviderDto,
+    blockchainMethod: string,
+    metadata?: Record<string, unknown>,
+  ): Promise<{ cid: string; receipt: string }> {
+    const context = {
+      blockchain_method: blockchainMethod,
+      blockchain_user_id: this.getBlockchainUserId(user_id, auth_provider.id),
+      user_id,
+      username,
+      auth_provider_id: auth_provider.id,
+      auth_provider: auth_provider.provider,
+      metadata,
+    };
+
+    const ipfs_cid = await this.ipfsService.uploadFile(
+      new PinataFile(
+        `${username}-${new Date().toISOString()}.json`,
+        "application/json",
+        new Metadata(context),
+      ),
+    );
+
+    return {
+      cid: ipfs_cid,
+      receipt: await this.ipfsService.getUrl(ipfs_cid),
+    };
+  }
+
   async generateOtp(
     user_id: string,
     {
@@ -175,9 +211,10 @@ export class OtpService {
     const currentTimeInSeconds = Math.floor(Date.now() / 1000);
     const endTimeInSeconds = currentTimeInSeconds + duration;
 
-    const tx = await this.updateOtpWindow({
+    const { txnLogUrls, cid, receipt } = await this.updateOtpWindow({
       user_id,
-      auth_provider_id: authProvider.id,
+      username,
+      auth_provider: authProvider,
       start_time: currentTimeInSeconds, // epoch time
       end_time: endTimeInSeconds, // epoch time
     });
@@ -205,7 +242,9 @@ export class OtpService {
     return {
       success: true,
       message: "OTP generated successfully",
-      txnLogUrls: tx.txnLogUrls,
+      txnLogUrls: txnLogUrls,
+      cid,
+      receipt,
       data: {
         otp,
         start_time: currentTimeInSeconds,
@@ -326,22 +365,29 @@ export class OtpService {
     );
 
     try {
+      const { cid, receipt } = await this.createReceipt(
+        user_id,
+        username,
+        authProvider,
+        "registerUser",
+      );
+
       // fund user wallet for registering
-      await this.fundUserWallet(public_key, "0.001");
+      await this.fundUserWallet(public_key);
 
       const tx = await contract.registerUser(
         this.getBlockchainUserId(user_id, authProvider.id),
         request,
         signature,
+        cid,
       );
-
-      // fund user wallet after registering
-      await this.fundUserWallet(public_key, "0.009");
 
       return {
         success: true,
         message: "User registered successfully",
         txnLogUrls: [this.getTxnLogUrl(tx.hash)],
+        cid,
+        receipt,
       };
     } catch (error: unknown) {
       const errorResponse = handleBlockchainException(
@@ -360,21 +406,36 @@ export class OtpService {
 
   async updateOtpWindow({
     user_id,
-    auth_provider_id,
+    username,
+    auth_provider,
     start_time,
     end_time,
   }: OtpWindowUpdateRequest): Promise<OtpWindowUpdateResponse> {
     try {
+      const { cid, receipt } = await this.createReceipt(
+        user_id,
+        username,
+        auth_provider,
+        "updateOtpWindow",
+        {
+          start_time: new Date(start_time).toISOString(),
+          end_time: new Date(end_time).toISOString(),
+        },
+      );
+
       const tx = await this.contractCalledByAdmin.updateOtpWindow(
-        this.getBlockchainUserId(user_id, auth_provider_id),
+        this.getBlockchainUserId(user_id, auth_provider.id),
         start_time,
         end_time,
+        cid,
       );
 
       return {
         success: true,
         message: "OTP window updated successfully",
         txnLogUrls: [this.getTxnLogUrl(tx.hash)],
+        cid,
+        receipt,
       };
     } catch (error: unknown) {
       const errorResponse = handleBlockchainException(
@@ -433,12 +494,23 @@ export class OtpService {
     const signature = await this.getSignedTypedData("verify", request, signer);
 
     try {
+      const { cid, receipt } = await this.createReceipt(
+        user_id,
+        username,
+        authProvider,
+        "verifyOtp",
+        {
+          otp: otp,
+        },
+      );
+
       // Interact with the smart contract to verify the OTP
       const tx = await contract.verifyOtp(
         this.getBlockchainUserId(user_id, authProvider.id),
         otp_index,
         request,
         signature,
+        cid,
       );
 
       // update otp index after successful verification
@@ -451,6 +523,8 @@ export class OtpService {
         success: true,
         message: "OTP verified successfully",
         txnLogUrls: [this.getTxnLogUrl(tx.hash)],
+        cid,
+        receipt,
       };
     } catch (error: unknown) {
       const errorResponse = handleBlockchainException("verifying OTP", error);
@@ -519,6 +593,7 @@ export class OtpService {
     const txs = authProviders.map((authProvider) => {
       return this.contractCalledByAdmin.blacklistUser(
         this.getBlockchainUserId(user_id, authProvider.id),
+        "",
       );
     });
 
@@ -552,6 +627,7 @@ export class OtpService {
     const txs = authProviders.map((authProvider) => {
       return this.contractCalledByAdmin.removeFromBlacklist(
         this.getBlockchainUserId(user_id, authProvider.id),
+        "",
       );
     });
 
@@ -587,6 +663,7 @@ export class OtpService {
         authProviders.map((authProvider) =>
           this.getBlockchainUserId(user_id, authProvider.id),
         ),
+        "",
       );
 
       return {

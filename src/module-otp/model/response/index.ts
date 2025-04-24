@@ -1,16 +1,27 @@
-/* eslint-disable @typescript-eslint/no-empty-object-type */
 import { OtpView } from "../view";
 
 export interface UserRegistrationResponse
-  extends BlockchainBaseResponse<unknown> {}
+  extends BlockchainBaseResponse<unknown> {
+  cid: string;
+  receipt: string;
+}
 
 export interface OtpVerificationResponse
-  extends BlockchainBaseResponse<unknown> {}
+  extends BlockchainBaseResponse<unknown> {
+  cid: string;
+  receipt: string;
+}
 
 export interface OtpWindowUpdateResponse
-  extends BlockchainBaseResponse<unknown> {}
+  extends BlockchainBaseResponse<unknown> {
+  cid: string;
+  receipt: string;
+}
 
-export interface OtpGeneratedResponse extends BlockchainBaseResponse<OtpView> {}
+export interface OtpGeneratedResponse extends BlockchainBaseResponse<OtpView> {
+  cid: string;
+  receipt: string;
+}
 
 export interface BlockchainBaseResponse<T = unknown> {
   success: boolean;

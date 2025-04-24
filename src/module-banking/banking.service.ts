@@ -7,6 +7,10 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { plainToInstance } from "class-transformer";
 import { DataSource, IsNull, Repository } from "typeorm";
 
+import { Metadata } from "~/module-common/model/metadata.model";
+import { IpfsService } from "~/module-ipfs/ipfs.service";
+import { PinataFile } from "~/module-ipfs/model";
+
 import { AccountStatus, Currency, TransactionType } from "./constant";
 import { AccountBalanceEntity } from "./entity/account-balance.entity";
 import { TransactionHistoryEntity } from "./entity/transaction-history.entity";
@@ -29,6 +33,7 @@ export class BankingService {
     @InjectRepository(TransactionHistoryEntity)
     private readonly transactionHistoryRepository: Repository<TransactionHistoryEntity>,
     private readonly dataSource: DataSource,
+    private readonly ipfsService: IpfsService,
   ) {}
 
   async createAccount(
@@ -57,6 +62,18 @@ export class BankingService {
     const savedAccount = await this.accountBalanceRepository.save(account);
 
     if (createAccountDto.initial_balance > 0) {
+      const cid = await this.ipfsService.uploadFile(
+        new PinataFile(
+          `${user_id}-${createAccountDto.currency}-${new Date().toISOString()}.json`,
+          "application/json",
+          new Metadata({
+            user_id,
+            currency: createAccountDto.currency,
+            initial_balance: createAccountDto.initial_balance,
+          }),
+        ),
+      );
+
       await this.createTransactionHistory({
         user_id,
         amount: createAccountDto.initial_balance,
@@ -64,6 +81,7 @@ export class BankingService {
         balance_before: 0,
         balance_after: createAccountDto.initial_balance,
         transaction_type: TransactionType.DEPOSIT,
+        ipfs_cid: cid,
         description: "Initial deposit",
       });
     }
@@ -274,6 +292,7 @@ export class BankingService {
     balance_before: number;
     balance_after: number;
     transaction_type: TransactionType;
+    ipfs_cid: string;
     reference_id?: string;
     description?: string;
   }): Promise<TransactionHistoryEntity> {

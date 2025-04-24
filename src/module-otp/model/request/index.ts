@@ -9,6 +9,8 @@ import {
 } from "class-validator";
 
 import { AuthenticationType } from "~/module-user/constant";
+import { AuthProviderDto } from "~/module-user/model";
+
 export class OtpGeneratedRequest {
   @IsEnum(AuthenticationType)
   @IsNotEmpty()
@@ -42,8 +44,9 @@ export class OtpRegisterRequest {
 }
 
 export type OtpWindowUpdateRequest = {
-  auth_provider_id: string;
+  auth_provider: AuthProviderDto;
   user_id: string;
+  username: string;
   start_time: number;
   end_time: number;
 };
