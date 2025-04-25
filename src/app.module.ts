@@ -8,6 +8,7 @@ import {
   InternalController,
   IpfsController,
   OtpController,
+  TransactionOtpController,
   UserAuthProviderController,
   UserController,
 } from "./module-api";
@@ -60,6 +61,7 @@ import { UserModule } from "./module-user/user.module";
     AuthController,
     BankingController,
     UserAuthProviderController,
+    TransactionOtpController,
   ],
 })
 export class AppModule {}

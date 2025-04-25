@@ -455,6 +455,7 @@ export class OtpService {
   async verifyOtp(
     user_id: string,
     { otp }: OtpVerificationRequest,
+    transaction_metadata?: Record<string, unknown>,
   ): Promise<OtpVerificationResponse> {
     const { username, secret_key } =
       await this.userService.getSensitiveUserDetails(user_id);
@@ -499,9 +500,7 @@ export class OtpService {
         username,
         authProvider,
         "verifyOtp",
-        {
-          otp: otp,
-        },
+        transaction_metadata,
       );
 
       // Interact with the smart contract to verify the OTP
