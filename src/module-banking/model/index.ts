@@ -3,3 +3,4 @@ export * from "./filter";
 export * from "./request";
 export * from "./response";
 export * from "./transaction-history.dto";
+export * from "./transaction-otp.dto";

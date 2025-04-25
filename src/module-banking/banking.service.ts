@@ -107,6 +107,16 @@ export class BankingService {
     return plainToInstance(AccountBalanceDto, account);
   }
 
+  async updateAccountBalance(
+    user_id: string,
+    currency: Currency,
+    balance: number,
+  ): Promise<AccountBalanceDto> {
+    const account = await this.getBalance(user_id, currency);
+    account.balance = balance;
+    return await this.accountBalanceRepository.save(account);
+  }
+
   async listAccounts(
     user_id: string,
     request: ListAccountBalancesRequest,
@@ -285,7 +295,7 @@ export class BankingService {
     );
   }
 
-  private async createTransactionHistory(data: {
+  async createTransactionHistory(data: {
     user_id: string;
     amount: number;
     currency: Currency;
