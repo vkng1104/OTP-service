@@ -150,7 +150,7 @@ export class TransactionOtpService {
         // Log the OTP verification in login history
         await this.bankingService.createTransactionHistory({
           user_id: user.id,
-          amount: cachedValue.amount,
+          amount: -cachedValue.amount,
           currency: cachedValue.currency,
           balance_before: user_account_balance.balance,
           balance_after: new_balance,
