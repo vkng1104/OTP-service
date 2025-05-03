@@ -1,34 +1,47 @@
-title OTP Request Workflow
+title OTP Activation Flow
 
 actor "End-user" as EndUser
-participant "Client" as ClientApp
-participant "Server" as ServerAPI
-participant "Web3 Wallet" as Web3Wallet
+participant "Client App" as Client
+participant "Server" as Server
+database "PostgreSQL" as DB
+participant "IPFS (Pinata)" as IPFS
 participant "Smart Contract" as SmartContract
-participant "Blockchain Network" as BlockchainNetwork
+participant "Blockchain Network" as Chain
 
+EndUser->Client: Request OTP
+Client->Server: Send OTP generation request (duration)
 
-EndUser->ClientApp: Request OTP
-ClientApp->Web3Wallet: Request Signature for OTP Request
-Web3Wallet-->ClientApp: Return Signed OTP Request
-ClientApp->ServerAPI: Send OTP Request and Signature
-ServerAPI->ServerAPI: Pre-validate Request (e.g., timestamp, structure)
-ServerAPI->ServerAPI: Generate and Hash OTP
-ServerAPI->SmartContract: Call requestOtp(request, signature)
-alt OTP Request Success
-    SmartContract->BlockchainNetwork: Transaction created and executed on
-    SmartContract->SmartContract: Verify Signature
-    SmartContract->SmartContract: Check if OTP already exists
-    SmartContract->SmartContract: Check expiration time validity
-    SmartContract->SmartContract: Store OTP Record
-    SmartContract->SmartContract: Emit OtpRequested Event
-    BlockchainNetwork-->SmartContract: Transaction Confirmed (Block Mined)
-    SmartContract-->ServerAPI: Acknowledge OTP Storage
-    ServerAPI-->ClientApp: Return OTP and Success Response
-    ClientApp-->EndUser: Notify User of OTP Generation
-else OTP Request Fails
-    SmartContract->SmartContract: Check fails (e.g., invalid signature, duplicate transaction)
-    SmartContract-->ServerAPI: Return Failure Reason
-    ServerAPI-->ClientApp: Forward Error to Client
-    ClientApp-->EndUser: Notify User of Failure
+Server->DB: Validate user and auth provider
+Server->DB: Retrieve current OTP index and user metadata
+
+Server->Server: Derive blockchain_user_id = hash(user_id + service + provider_id)
+Server->Server: Compute current raw_otp = hash(username + provider_password + secret_key + otp_index)
+Server->Server: Compute 6-digit OTP = extractNumeric(raw_otp)
+
+Server->Server: Compute next_raw_otp = hash(username + provider_password + secret_key + (otp_index + 1))
+Server->Server: Compute nextCommitment = hash(next_raw_otp)
+
+Server->Server: Compute OTP validity window (start_time = now(), end_time = now() + duration)
+
+Server->Server: Cache temporary OTP details:
+note right of Server: key = otp:${user_id}:${otp} \n value = {raw_otp, auth_provider_id, next_commitment}
+
+Server->IPFS: Generate audit metadata JSON and upload
+IPFS-->Server: Return CID
+
+Server->SmartContract: Call updateOtpWindow(blockchain_user_id, start_time, end_time, cid)
+
+alt Activation success
+    SmartContract->SmartContract: Validate blockchain_user_id and timestamps
+    SmartContract->SmartContract: Update otpRecords[blockchain_user_id].start_time & end_time
+    SmartContract->SmartContract: Emit OtpActivated(blockchain_user_id, sender, cid)
+    SmartContract->Chain: Submit transaction
+    Chain-->SmartContract: Confirm transaction (Block mined)
+    SmartContract-->Server: Acknowledge update
+    Server-->Client: Return numeric OTP + time window + txn log + receipt
+    Client-->EndUser: Show OTP and validity window
+else Activation failed
+    SmartContract-->Server: Return failure reason
+    Server-->Client: Return error message
+    Client-->EndUser: Show update failure
 end

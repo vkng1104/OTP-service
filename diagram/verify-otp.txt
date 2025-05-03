@@ -1,32 +1,49 @@
+title OTP Verification Flow
+
 actor "End-user" as EndUser
-participant "Client" as ClientApp
-participant "Server" as ServerAPI
-participant "Web3 Wallet" as Web3Wallet
+participant "Third-party Platform" as Platform
+participant "Client App (API)" as ClientAppAPI
+participant "Server" as Server
+database "PostgreSQL" as DB
+participant "IPFS (Pinata)" as IPFS
 participant "Smart Contract" as SmartContract
-participant "Blockchain Network" as BlockchainNetwork
+participant "Blockchain Network" as Chain
 
+EndUser->Platform: Submit OTP to verify transaction
+Platform->ClientAppAPI: POST /api/transaction-otp/verify
 
-EndUser->ClientApp: Submit OTP
-ClientApp->Web3Wallet: Sign OTP Verification Request
-Web3Wallet-->ClientApp: Return Signed Request
-ClientApp->ServerAPI: Send OTP Verification Request and Signature
-ServerAPI->ServerAPI: Pre-validate Request (e.g., structure, format)
-ServerAPI->ServerAPI: Hash OTP
-ServerAPI->SmartContract: Call verifyOtp(transactionId, hashedOtp, signature)
+ClientAppAPI->Server: verifyTransactionOtp(username, transaction_id, otp, transaction_metadata)
 
-alt OTP Verification Success
-    SmartContract->BlockchainNetwork: Transaction created and executed on
-    SmartContract->SmartContract: Perform Condition Checks
-    SmartContract->SmartContract: Hash Submitted OTP
-    SmartContract->SmartContract: Compare Hashes
-    SmartContract->SmartContract: Emit OtpVerified Event
-    BlockchainNetwork-->SmartContract: Transaction Confirmed (Block Mined)
-    SmartContract-->ServerAPI: Verification Successful
-    ServerAPI-->ClientApp: Return Success Response
-    ClientApp-->EndUser: Notify User of Successful Verification
-else OTP Verification Fails
-    SmartContract->SmartContract: Verification Fails (Hash Mismatch or Checks Failed)
-    SmartContract-->ServerAPI: Return Failure Reason
-    ServerAPI-->ClientApp: Forward Error to Client
-    ClientApp-->EndUser: Notify User of Verification Failure
+Server->DB: Look up user info by username
+DB-->Server: Return info (user_id, private_key, etc.)
+
+Server->Server: Get cached OTP details by key
+note right of Server: key = otp:${user_id}:${otp} \n value = {raw_otp, provider_id, next_commitment_value}
+
+Server->DB: Get current OTP index for this user's authentication provider
+DB-->Server: Return index
+
+Server->Server: Derive blockchain_user_id = hash(user_id + service + provider_id)
+
+Server->Server: Construct EIP-712 OTPVerification struct and sign it using user's private key
+
+Server->IPFS: Generate audit metadata JSON (including transaction_metadata) and upload
+IPFS-->Server: Return CID
+
+Server->SmartContract: verifyOtp(blockchain_user_id, index, request, signature, cid)
+
+alt Verification Success
+    SmartContract->SmartContract: Verify EIP-712 signature
+    SmartContract->SmartContract: Check index match, hash(raw_otp), time window
+    SmartContract->SmartContract: Update stored commitment & index
+    SmartContract->SmartContract: Emit OtpVerified(blockchain_user_id, sender, cid)
+    SmartContract->Chain: Submit transaction
+    Chain-->SmartContract: Confirm transaction (Block mined)
+    SmartContract-->Server: Acknowledge success
+    Server-->ClientAppAPI: Return { isValid: true }
+    ClientAppAPI-->Platform: Notify transaction verified
+else Verification Failed
+    SmartContract-->Server: Return error
+    Server-->ClientAppAPI: Return { isValid: false }
+    ClientAppAPI-->Platform: Show error to user
 end

@@ -1,0 +1,46 @@
+title OTP Registration Flow
+
+actor "End-user" as EndUser
+participant "Client App" as Client
+participant "Server" as Server
+database "PostgreSQL" as DB
+participant "IPFS (Pinata)" as IPFS
+participant "Smart Contract" as SmartContract
+participant "Blockchain Network" as Chain
+
+EndUser->Client: Initiate registration
+Client->Server: Send user registration request
+
+Server->Server: Generate Ethereum wallet for user (public_key, secret_key)
+Server->DB: Store user info + wallet's keypair + OTP index = 0 (per auth provider) in Database
+note right of DB: Database does not store user's password
+
+DB-->Server: Return stored user and provider info
+Server->Server:Derive blockchain_user_id = hash(user_id, service, provider_id)
+Server->Server: Compute raw_otp = hash(username + provider_password + secret_key + otp_index)
+Server->Server: Compute commitment = hash(raw_otp)
+
+Server->Server: Construct EIP-712 UserRegistration struct and sign it with wallet's private key
+
+Server->IPFS: Generate audit metadata JSON and Upload JSON to IPFS
+IPFS-->Server: Return CID
+
+Server->Server: Fund user's wallet
+
+Server->SmartContract: Call registerUser(blockchain_user_id, request, signature, cid)
+
+alt Registration success
+    SmartContract->SmartContract: Verify EIP-712 signature
+    SmartContract->SmartContract: Store commitment in otpRecords[blockchain_user_id]
+    SmartContract->SmartContract: Emit UserRegistered(blockchain_user_id, sender, cid)
+    SmartContract->Chain: Submit transaction
+    Chain-->SmartContract: Confirm transaction (Block mined)
+    SmartContract-->Server: Acknowledge registration
+    Server-->Client: Return success + txnLog + receipt
+    Client-->EndUser: Show registration success
+else Registration failed
+    SmartContract-->Server: Return error
+    Server->DB: Rollback user-related information creation (delete cascade)
+    Server-->Client: Return failure message
+    Client-->EndUser: Show registration failure
+end
