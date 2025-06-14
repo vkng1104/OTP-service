@@ -4,6 +4,8 @@
 
 This project implements an **OTP (One-Time Password) System** as a smart contract using Solidity. It leverages the **EIP-712 standard** for securely signing and verifying OTP requests, ensuring tamper-proof operations. The smart contract includes functionality to request, verify, and manage OTPs with expiration and usage tracking.
 
+You could access more details here: https://drive.google.com/drive/folders/1uunj8ygJ5Tvdsl1GMLc4SeYMwQY3BtAR?usp=sharing
+
 ### Features
 
 - Secure OTP generation and storage
